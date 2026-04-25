@@ -35,6 +35,7 @@ with (
     mock_s.lm_studio_base_url = "http://localhost:41343/v1"
     mock_s.lm_studio_model = "modelo"
     mock_s.llm_max_tokens = None
+    mock_s.llm_timeout = 300
     mock_s.llm_citations = True
     mock_s.llm_max_context_chars = 24000
     mock_s.qdrant_timeout = 30
@@ -89,6 +90,7 @@ class TestApiConfig:
             "lm_studio_base_url",
             "lm_studio_model",
             "llm_max_tokens",
+            "llm_timeout",
             "llm_citations",
             "qdrant_timeout",
         ]
@@ -188,6 +190,22 @@ class TestQueryBodyValidation:
         )
         assert response.status_code == 422
 
+    def test_llm_timeout_min(self):
+        """llm_timeout debe ser >= 1."""
+        response = client.post(
+            "/api/query",
+            json={"question": "test?", "collection": "test", "llm_timeout": 0},
+        )
+        assert response.status_code == 422
+
+    def test_llm_timeout_max(self):
+        """llm_timeout debe ser <= 3600."""
+        response = client.post(
+            "/api/query",
+            json={"question": "test?", "collection": "test", "llm_timeout": 3601},
+        )
+        assert response.status_code == 422
+
 
 class TestQueryBodyDefaults:
     """Tests de valores por defecto de QueryBody."""
@@ -239,3 +257,18 @@ class TestApiQueryValidation:
         # El test anterior ya verificó que la validación funciona
         # Este test se omite porque requiere Qdrant real o mocks completos
         pass
+
+    def test_runtime_timeout_returns_error_result(self):
+        """Los errores de ejecución devuelven JSON con error y tiempo."""
+        with patch("privrag.web.app.answer", side_effect=TimeoutError("timeout de prueba")):
+            response = client.post(
+                "/api/query",
+                json={"question": "test?", "collection": "test"},
+            )
+
+        assert response.status_code == 504
+        data = response.json()
+        assert data["error"] == "timeout de prueba"
+        assert data["answer"] == "Error: timeout de prueba"
+        assert data["hits"] == []
+        assert "elapsed_ms" in data

@@ -50,6 +50,8 @@ class Settings(BaseSettings):
     llm_max_context_chars: int = Field(default=24000, alias="LLM_MAX_CONTEXT_CHARS")
     # Máximo de tokens de salida del LLM (None = dejar el valor por defecto de cada API/modelo)
     llm_max_tokens: int | None = Field(default=None, alias="LLM_MAX_TOKENS", ge=1)
+    # Timeout HTTP para llamadas al proveedor LLM.
+    llm_timeout: int = Field(default=300, alias="LLM_TIMEOUT", ge=1)
     # Si es False: prompt sin pedir citas y contexto sin rutas (menos tokens de entrada/salida)
     llm_citations: bool = Field(default=True, alias="LLM_CITATIONS")
     openai_model: str = Field(default="gpt-4o-mini", alias="OPENAI_MODEL")

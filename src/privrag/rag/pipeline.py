@@ -71,6 +71,7 @@ def answer(
     max_tokens: int | None = None,
     include_citations: bool | None = None,
     qdrant_timeout: int | None = None,
+    llm_timeout: int | None = None,
 ) -> tuple[list[SearchHit], str | None]:
     """Devuelve (hits, respuesta_llm o None si solo recuperación)."""
     hits = retrieve(
@@ -86,7 +87,7 @@ def answer(
     chosen_backend = llm_backend if llm_backend is not None else s.llm_backend
     if not want_llm or not hits or chosen_backend == LLMBackend.NONE:
         return hits, None
-    llm = get_llm(backend=llm_backend, model=llm_model)
+    llm = get_llm(backend=llm_backend, model=llm_model, timeout=llm_timeout)
     cite = include_citations if include_citations is not None else s.llm_citations
     ctx = format_context(
         hits,

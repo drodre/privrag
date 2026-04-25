@@ -316,10 +316,14 @@
               <datalist id="available-models"></datalist>
             </div>
           </div>
-          <div class="row">
+          <div class="row cols-2">
             <div>
               <label for="q-max-tokens">max_tokens (opcional)</label>
               <input id="q-max-tokens" type="number" min="1" max="256000" />
+            </div>
+            <div>
+              <label for="q-llm-timeout">Timeout LLM (segundos)</label>
+              <input id="q-llm-timeout" type="number" min="1" max="3600" />
             </div>
           </div>
           <div class="checks">
@@ -330,6 +334,7 @@
           <label><input type="checkbox" id="q-no-llm" /> Solo recuperación (sin LLM)</label>
         </div>
         <button type="submit" id="query-btn">Preguntar</button>
+        <button type="button" id="query-cancel-btn" class="secondary" style="display:none">Parar consulta</button>
       </form>
       <div id="query-answer" class="answer" style="display:none"></div>
       <div id="query-hits"></div>
@@ -356,6 +361,7 @@
         "q-game": document.getElementById("q-game").value,
         "q-prefix": document.getElementById("q-prefix").value,
         "q-qdrant-timeout": document.getElementById("q-qdrant-timeout").value,
+        "q-llm-timeout": document.getElementById("q-llm-timeout").value,
         "q-no-llm": document.getElementById("q-no-llm").checked ? "1" : "",
         "q-llm-backend": document.getElementById("q-llm-backend").value,
       };
@@ -369,7 +375,7 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
         const state = JSON.parse(raw);
-        const fields = ["ingest-collection", "ingest-game", "q-collection", "q-limit", "q-game", "q-prefix", "q-qdrant-timeout", "q-llm-backend"];
+        const fields = ["ingest-collection", "ingest-game", "q-collection", "q-limit", "q-game", "q-prefix", "q-qdrant-timeout", "q-llm-timeout", "q-llm-backend"];
         fields.forEach((id) => {
           const el = document.getElementById(id);
           if (el && state[id]) el.value = state[id];
@@ -394,9 +400,14 @@
       el.textContent = "";
     }
     function formatApiError(data) {
+      if (data && typeof data.error === "string") return data.error;
       const d = data && data.detail;
       if (Array.isArray(d)) {
         return d.map((x) => x.msg || JSON.stringify(x)).join("\n");
+      }
+      if (d && typeof d === "object") {
+        if (typeof d.error === "string") return d.error;
+        if (typeof d.message === "string") return d.message;
       }
       if (typeof d === "string") return d;
       return JSON.stringify(data);
@@ -406,6 +417,13 @@
       const seconds = Number(ms) / 1000;
       if (seconds < 1) return Number(ms).toFixed(0) + " ms";
       return seconds.toFixed(2) + " s";
+    }
+    function renderQueryError(data, fallback, answerEl, msg) {
+      const elapsed = formatElapsed(data && data.elapsed_ms);
+      const text = formatApiError(data) || fallback || "Error";
+      answerEl.textContent = "Error: " + text + (elapsed ? "\n\nTiempo de consulta: " + elapsed : "");
+      answerEl.style.display = "block";
+      show(msg, "La consulta terminó con error" + (elapsed ? " en " + elapsed : "") + ".", "err");
     }
 
     let cfg = null;
@@ -438,10 +456,16 @@
           cfg = await r.json();
           const mt = document.getElementById("q-max-tokens");
           const qt = document.getElementById("q-qdrant-timeout");
+          const lt = document.getElementById("q-llm-timeout");
           if (cfg.llm_max_tokens != null) {
             mt.placeholder = "Vacío = usar " + cfg.llm_max_tokens + " (.env)";
           } else {
             mt.placeholder = "Vacío = default de la API";
+          }
+          if (cfg.llm_timeout != null) {
+            lt.placeholder = "Vacío = usar " + cfg.llm_timeout + " (.env)";
+          } else {
+            lt.placeholder = "Vacío = default del proveedor";
           }
           if (cfg.qdrant_timeout != null) {
             qt.placeholder = "Vacío = usar " + cfg.qdrant_timeout + " (.env)";
@@ -497,7 +521,7 @@
         const res = await fetch("/api/ingest", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          show(msg, formatApiError(data) || res.statusText || "Error", "err");
+          renderQueryError(data, res.statusText, answerEl, msg);
           return;
         }
         const lines = data.files.map((f) => f.path + " → " + f.chunks + " chunks").join("\n");
@@ -512,13 +536,28 @@
       }
     });
 
+    let currentQueryController = null;
+
+    document.getElementById("query-cancel-btn").addEventListener("click", () => {
+      if (currentQueryController) {
+        currentQueryController.abort();
+      }
+    });
+
     document.getElementById("query-form").addEventListener("submit", async (e) => {
       e.preventDefault();
       const btn = document.getElementById("query-btn");
+      const cancelBtn = document.getElementById("query-cancel-btn");
       const answerEl = document.getElementById("query-answer");
       const hitsEl = document.getElementById("query-hits");
       const msg = document.getElementById("query-msg");
+      if (currentQueryController) {
+        currentQueryController.abort();
+      }
+      const queryController = new AbortController();
+      currentQueryController = queryController;
       btn.disabled = true;
+      cancelBtn.style.display = "inline-block";
       hide(msg);
       hitsEl.innerHTML = "";
       answerEl.style.display = "none";
@@ -543,6 +582,8 @@
         if (m) body.llm_model = m;
         const mtx = document.getElementById("q-max-tokens").value.trim();
         if (mtx) body.max_tokens = parseInt(mtx, 10);
+        const lto = document.getElementById("q-llm-timeout").value.trim();
+        if (lto) body.llm_timeout = parseInt(lto, 10);
         body.include_citations = wantCitations;
       }
 
@@ -551,6 +592,7 @@
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify(body),
+          signal: queryController.signal,
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
@@ -599,9 +641,17 @@
           show(msg, "Tiempo de consulta: " + elapsed, "ok");
         }
       } catch (err) {
-        show(msg, String(err), "err");
+        if (err && err.name === "AbortError") {
+          show(msg, "Consulta cancelada.", "info");
+        } else {
+          show(msg, String(err), "err");
+        }
       } finally {
-        btn.disabled = false;
+        if (currentQueryController === queryController) {
+          currentQueryController = null;
+          btn.disabled = false;
+          cancelBtn.style.display = "none";
+        }
       }
     });
 

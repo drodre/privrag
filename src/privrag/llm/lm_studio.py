@@ -37,11 +37,12 @@ def _parse_native_v1_chat(data: dict) -> str:
 class LMStudioLLM(LLM):
     """POST a `/v1/chat/completions`; si 404, POST a `/api/v1/chat` (LM Studio 0.4+)."""
 
-    def __init__(self, base_url: str, model: str, api_key: str) -> None:
+    def __init__(self, base_url: str, model: str, api_key: str, *, timeout: int) -> None:
         self._base = base_url.rstrip("/")
         self._origin = _http_origin(self._base)
         self._model = model
         self._api_key = api_key
+        self._timeout = timeout
 
     def complete(self, system: str, user: str, *, max_tokens: int | None = None) -> str:
         mt = resolve_max_tokens(max_tokens)
@@ -60,31 +61,37 @@ class LMStudioLLM(LLM):
             openai_body["max_tokens"] = mt
 
         url_openai = f"{self._origin}/v1/chat/completions"
-        with httpx.Client(timeout=180.0) as client:
-            r = client.post(url_openai, headers=headers, json=openai_body)
-            if r.status_code == 200:
-                return _parse_openai_compat(r.json())
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                r = client.post(url_openai, headers=headers, json=openai_body)
+                if r.status_code == 200:
+                    return _parse_openai_compat(r.json())
 
-            if r.status_code != 404:
-                r.raise_for_status()
+                if r.status_code != 404:
+                    r.raise_for_status()
 
-            native_body: dict = {
-                "model": self._model,
-                "system_prompt": system,
-                "input": user,
-                "stream": False,
-            }
-            if mt is not None:
-                native_body["max_output_tokens"] = mt
+                native_body: dict = {
+                    "model": self._model,
+                    "system_prompt": system,
+                    "input": user,
+                    "stream": False,
+                }
+                if mt is not None:
+                    native_body["max_output_tokens"] = mt
 
-            url_native = f"{self._origin}/api/v1/chat"
-            r2 = client.post(url_native, headers=headers, json=native_body)
-            if r2.status_code != 200:
-                hint = (
-                    f"LM Studio respondió 404 en {url_openai} y error en {url_native} "
-                    f"({r2.status_code}): {(r2.text or '')[:400]}\n"
-                    "Comprueba en LM Studio: pestaña Developer → servidor en marcha, "
-                    "puerto correcto y modelo cargado. El puerto lo muestra la propia app."
-                )
-                raise RuntimeError(hint)
-            return _parse_native_v1_chat(r2.json())
+                url_native = f"{self._origin}/api/v1/chat"
+                r2 = client.post(url_native, headers=headers, json=native_body)
+                if r2.status_code != 200:
+                    hint = (
+                        f"LM Studio respondió 404 en {url_openai} y error en {url_native} "
+                        f"({r2.status_code}): {(r2.text or '')[:400]}\n"
+                        "Comprueba en LM Studio: pestaña Developer → servidor en marcha, "
+                        "puerto correcto y modelo cargado. El puerto lo muestra la propia app."
+                    )
+                    raise RuntimeError(hint)
+                return _parse_native_v1_chat(r2.json())
+        except httpx.TimeoutException as e:
+            raise TimeoutError(
+                f"Timeout del LLM LM Studio tras {self._timeout}s. "
+                "Sube LLM_TIMEOUT o el campo 'Timeout LLM' en la consulta."
+            ) from e

@@ -30,9 +30,10 @@ def _resp_hint(resp: httpx.Response) -> str:
 
 
 class OllamaLLM(LLM):
-    def __init__(self, base_url: str, model: str) -> None:
+    def __init__(self, base_url: str, model: str, *, timeout: int) -> None:
         self._base = _normalize_ollama_base(base_url)
         self._model = model
+        self._timeout = timeout
 
     def complete(self, system: str, user: str, *, max_tokens: int | None = None) -> str:
         mt = resolve_max_tokens(max_tokens)
@@ -56,63 +57,69 @@ class OllamaLLM(LLM):
             "Authorization": "Bearer ollama",
         }
 
-        with httpx.Client(timeout=120.0) as client:
-            # 1) API compatible con OpenAI
-            r = client.post(
-                f"{self._base}/v1/chat/completions",
-                json=payload_v1,
-                headers=headers,
-            )
-            if r.status_code == 200:
-                try:
-                    data = r.json()
-                except ValueError as e:
-                    raise RuntimeError(
-                        f"Ollama devolvió 200 pero no es JSON válido: {_resp_hint(r)}"
-                    ) from e
-                err = data.get("error")
-                if err:
-                    raise RuntimeError(
-                        f"Ollama (error en JSON): {err!r}. Base URL usada: {self._base!r}, modelo: {self._model!r}"
-                    )
-                return _parse_openai_compat(data)
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                # 1) API compatible con OpenAI
+                r = client.post(
+                    f"{self._base}/v1/chat/completions",
+                    json=payload_v1,
+                    headers=headers,
+                )
+                if r.status_code == 200:
+                    try:
+                        data = r.json()
+                    except ValueError as e:
+                        raise RuntimeError(
+                            f"Ollama devolvió 200 pero no es JSON válido: {_resp_hint(r)}"
+                        ) from e
+                    err = data.get("error")
+                    if err:
+                        raise RuntimeError(
+                            f"Ollama (error en JSON): {err!r}. Base URL usada: {self._base!r}, modelo: {self._model!r}"
+                        )
+                    return _parse_openai_compat(data)
 
-            # 2) API nativa /api/chat
-            r2 = client.post(
-                f"{self._base}/api/chat",
-                json=payload_native,
-                headers=headers,
-            )
-            if r2.status_code == 200:
-                data = r2.json()
-                err = data.get("error")
-                if err:
-                    raise RuntimeError(
-                        f"Ollama (error en JSON): {err!r}. Base URL: {self._base!r}, modelo: {self._model!r}"
-                    )
-                return _parse_native_chat(data)
+                # 2) API nativa /api/chat
+                r2 = client.post(
+                    f"{self._base}/api/chat",
+                    json=payload_native,
+                    headers=headers,
+                )
+                if r2.status_code == 200:
+                    data = r2.json()
+                    err = data.get("error")
+                    if err:
+                        raise RuntimeError(
+                            f"Ollama (error en JSON): {err!r}. Base URL: {self._base!r}, modelo: {self._model!r}"
+                        )
+                    return _parse_native_chat(data)
 
-            # 3) Ollama antiguo: /api/generate
-            prompt = f"{system}\n\n{user}"
-            gen_body: dict = {
-                "model": self._model,
-                "prompt": prompt,
-                "stream": False,
-            }
-            if mt is not None:
-                gen_body["options"] = {"num_predict": mt}
-            r3 = client.post(
-                f"{self._base}/api/generate",
-                json=gen_body,
-                headers=headers,
-            )
-            if r3.status_code == 200:
-                data = r3.json() or {}
-                if data.get("error"):
-                    raise RuntimeError(
-                        f"Ollama (error en JSON): {data['error']!r}. Base URL: {self._base!r}, modelo: {self._model!r}"
-                    )
-                return str(data.get("response") or "")
+                # 3) Ollama antiguo: /api/generate
+                prompt = f"{system}\n\n{user}"
+                gen_body: dict = {
+                    "model": self._model,
+                    "prompt": prompt,
+                    "stream": False,
+                }
+                if mt is not None:
+                    gen_body["options"] = {"num_predict": mt}
+                r3 = client.post(
+                    f"{self._base}/api/generate",
+                    json=gen_body,
+                    headers=headers,
+                )
+                if r3.status_code == 200:
+                    data = r3.json() or {}
+                    if data.get("error"):
+                        raise RuntimeError(
+                            f"Ollama (error en JSON): {data['error']!r}. Base URL: {self._base!r}, modelo: {self._model!r}"
+                        )
+                    return str(data.get("response") or "")
+        except httpx.TimeoutException as e:
+            raise TimeoutError(
+                f"Timeout del LLM Ollama tras {self._timeout}s. "
+                "Sube LLM_TIMEOUT o el campo 'Timeout LLM' en la consulta."
+            ) from e
 
         raise RuntimeError(
             "Ollama rechazó las tres rutas. Detalle:\n"

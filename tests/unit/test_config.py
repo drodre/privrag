@@ -53,6 +53,11 @@ class TestSettingsDefaults:
             s = Settings()
             assert s.llm_backend in [e for e in LLMBackend]
 
+    def test_defaults_llm_timeout(self):
+        with _clean_env():
+            s = Settings()
+            assert s.llm_timeout == 300
+
     def test_defaults_chunk_size(self):
         with _clean_env():
             s = Settings()
@@ -101,6 +106,11 @@ class TestSettingsEnvVars:
         with _clean_env({"LLM_BACKEND": "none"}):
             s = Settings()
             assert s.llm_backend == LLMBackend.NONE
+
+    def test_llm_timeout_from_env(self):
+        with _clean_env({"LLM_TIMEOUT": "600"}):
+            s = Settings()
+            assert s.llm_timeout == 600
 
     def test_llm_backend_lm_studio(self):
         with _clean_env({"LLM_BACKEND": "lmstudio", "LM_STUDIO_MODEL": "modelo"}):
@@ -152,6 +162,11 @@ class TestInvalidEnumValues:
 
     def test_qdrant_timeout_zero(self):
         with _clean_env({"QDRANT_TIMEOUT": "0"}):
+            with pytest.raises(ValidationError):
+                Settings()
+
+    def test_llm_timeout_zero(self):
+        with _clean_env({"LLM_TIMEOUT": "0"}):
             with pytest.raises(ValidationError):
                 Settings()
 

@@ -228,6 +228,7 @@ def api_config() -> JSONResponse:
         {
             "llm_backend": s.llm_backend.value,
             "qdrant_timeout": s.qdrant_timeout,
+            "llm_timeout": s.llm_timeout,
             "ollama_model": s.ollama_model,
             "openai_model": s.openai_model,
             "openrouter_model": s.openrouter_model,
@@ -256,6 +257,7 @@ class QueryBody(BaseModel):
     max_tokens: int | None = Field(None, ge=1, le=256000)
     include_citations: bool = True
     qdrant_timeout: int | None = Field(None, ge=1, le=3600)
+    llm_timeout: int | None = Field(None, ge=1, le=3600)
 
 
 @app.post("/api/ingest")
@@ -305,6 +307,21 @@ async def api_ingest(
 def api_query(body: QueryBody) -> JSONResponse:
     started_at = time.perf_counter()
 
+    def elapsed_ms() -> float:
+        return round((time.perf_counter() - started_at) * 1000, 1)
+
+    def error_response(message: str, status_code: int) -> JSONResponse:
+        return JSONResponse(
+            {
+                "answer": f"Error: {message}",
+                "error": message,
+                "elapsed_ms": elapsed_ms(),
+                "include_citations": False,
+                "hits": [],
+            },
+            status_code=status_code,
+        )
+
     prefix = None
     if body.source_prefix and body.source_prefix.strip():
         prefix = str(Path(body.source_prefix.strip()).expanduser().resolve())
@@ -322,11 +339,15 @@ def api_query(body: QueryBody) -> JSONResponse:
                 qdrant_timeout=body.qdrant_timeout,
             )
         except TimeoutError as e:
-            raise HTTPException(status_code=504, detail=str(e)) from e
+            return error_response(str(e), 504)
+        except ValueError as e:
+            return error_response(str(e), 400)
+        except Exception as e:
+            return error_response(str(e), 500)
         return JSONResponse(
             {
                 "answer": None,
-                "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 1),
+                "elapsed_ms": elapsed_ms(),
                 "include_citations": True,
                 "hits": [
                     {
@@ -352,15 +373,20 @@ def api_query(body: QueryBody) -> JSONResponse:
             max_tokens=body.max_tokens,
             include_citations=body.include_citations,
             qdrant_timeout=body.qdrant_timeout,
+            llm_timeout=body.llm_timeout,
         )
+    except HTTPException as e:
+        return error_response(str(e.detail), e.status_code)
     except TimeoutError as e:
-        raise HTTPException(status_code=504, detail=str(e)) from e
+        return error_response(str(e), 504)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e)) from e
+        return error_response(str(e), 400)
+    except Exception as e:
+        return error_response(str(e), 500)
     return JSONResponse(
         {
             "answer": reply,
-            "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 1),
+            "elapsed_ms": elapsed_ms(),
             "include_citations": body.include_citations,
             "hits": [
                 {

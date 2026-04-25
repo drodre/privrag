@@ -5,9 +5,10 @@ from privrag.llm.tokens import resolve_max_tokens
 
 
 class OpenAIChatLLM(LLM):
-    def __init__(self, api_key: str, model: str) -> None:
+    def __init__(self, api_key: str, model: str, *, timeout: int) -> None:
         self._api_key = api_key
         self._model = model
+        self._timeout = timeout
 
     def complete(self, system: str, user: str, *, max_tokens: int | None = None) -> str:
         mt = resolve_max_tokens(max_tokens)
@@ -20,15 +21,21 @@ class OpenAIChatLLM(LLM):
         }
         if mt is not None:
             body["max_tokens"] = mt
-        with httpx.Client(timeout=120.0) as client:
-            r = client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={
-                    "Authorization": f"Bearer {self._api_key}",
-                    "Content-Type": "application/json",
-                },
-                json=body,
-            )
-            r.raise_for_status()
-            data = r.json()
+        try:
+            with httpx.Client(timeout=self._timeout) as client:
+                r = client.post(
+                    "https://api.openai.com/v1/chat/completions",
+                    headers={
+                        "Authorization": f"Bearer {self._api_key}",
+                        "Content-Type": "application/json",
+                    },
+                    json=body,
+                )
+                r.raise_for_status()
+                data = r.json()
+        except httpx.TimeoutException as e:
+            raise TimeoutError(
+                f"Timeout del LLM OpenAI tras {self._timeout}s. "
+                "Sube LLM_TIMEOUT o el campo 'Timeout LLM' en la consulta."
+            ) from e
         return data["choices"][0]["message"]["content"]
