@@ -1,6 +1,6 @@
 # privrag
 
-RAG para documentos de rol (reglas, lore, tablas): **ingestión** → troceado → **embeddings** (locales o OpenAI) → almacén vectorial **Qdrant** → **consulta** recuperando fragmentos relevantes y, si lo configuras, respuesta con **LLM** (Ollama local, OpenAI o [OpenRouter](https://openrouter.ai)).
+RAG para documentos personales: **ingestión** → troceado → **embeddings** (locales o OpenAI) → almacén vectorial **Qdrant** → **consulta** recuperando fragmentos relevantes y, si lo configuras, respuesta con **LLM** (Ollama local, OpenAI o [OpenRouter](https://openrouter.ai)).
 
 ## Requisitos
 
