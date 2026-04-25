@@ -1,0 +1,59 @@
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "privrag"
+version = "0.1.0"
+description = "RAG para documentos de RPG (Qdrant + embeddings locales, LLM intercambiable)"
+readme = "README.md"
+requires-python = ">=3.11"
+dependencies = [
+  "pydantic-settings>=2.2",
+  "qdrant-client>=1.13,<1.14",
+  "sentence-transformers>=3.0",
+  "httpx>=0.27",
+  "typer>=0.12",
+  "python-dotenv>=1.0",
+  "pypdf>=5.0",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.32",
+  "python-multipart>=0.0.9",
+]
+
+[project.optional-dependencies]
+dev = ["ruff>=0.8"]
+test = ["pytest>=8.0", "pytest-cov>=4.1"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+addopts = [
+    "-v",
+    "--strict-markers",
+    "--tb=short",
+    "--cov=privrag",
+    "--cov-report=term-missing",
+    # Coverage requiere servicios externos para ser meaningful
+]
+markers = [
+    "slow: marks tests as slow (deselect with '-m \"not slow\"')",
+    "integration: marks tests as integration tests",
+    "unit: marks tests as unit tests",
+]
+
+[project.scripts]
+privrag = "privrag.cli:app"
+privrag-web = "privrag.web.__main__:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+"privrag.web" = ["static/index.html"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"

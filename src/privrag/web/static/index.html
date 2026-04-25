@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>privrpg</title>
+  <style>
+    :root {
+      --bg: #0f1419;
+      --panel: #1a2332;
+      --text: #e6edf3;
+      --muted: #8b9cb3;
+      --accent: #3d8bfd;
+      --border: #30363d;
+      --ok: #3fb950;
+      --err: #f85149;
+      font-family: system-ui, "Segoe UI", sans-serif;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.5;
+    }
+    .layout {
+      display: flex;
+      min-height: 100vh;
+    }
+    .sidebar {
+      width: 240px;
+      background: var(--panel);
+      border-right: 1px solid var(--border);
+      padding: 1rem;
+      flex-shrink: 0;
+    }
+    .sidebar-right {
+      border-right: none;
+      border-left: 1px solid var(--border);
+    }
+    .status-panel { font-size: 0.9rem; }
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.35rem;
+      padding: 0.4rem 0.75rem;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 0.85rem;
+    }
+    .status-badge.ok { background: rgba(63, 185, 80, 0.15); color: var(--ok); }
+    .status-badge.err { background: rgba(248, 81, 73, 0.15); color: var(--err); }
+    .status-detail {
+      font-size: 0.8rem;
+      color: var(--err);
+      margin-top: 0.5rem;
+      line-height: 1.4;
+      word-break: break-word;
+    }
+    .status-url {
+      font-size: 0.75rem;
+      color: var(--muted);
+      margin-top: 0.75rem;
+      word-break: break-all;
+      line-height: 1.35;
+    }
+    .status-url-label {
+      font-size: 0.7rem;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin-bottom: 0.25rem;
+    }
+    .sidebar-status-refresh { margin-top: 0.85rem; width: 100%; }
+    .sidebar h3 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 0.75rem;
+      letter-spacing: 0.05em;
+    }
+    .collection-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0.5rem 0.75rem;
+      margin: 0.25rem 0;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .collection-item:hover {
+      background: var(--border);
+    }
+    .collection-item.active {
+      background: var(--accent);
+    }
+    .collection-item span {
+      font-size: 0.9rem;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .collection-item .delete-btn {
+      opacity: 0;
+      background: var(--err);
+      color: #fff;
+      border: none;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.75rem;
+      cursor: pointer;
+    }
+    .collection-item:hover .delete-btn {
+      opacity: 1;
+    }
+    .no-collections {
+      color: var(--muted);
+      font-size: 0.85rem;
+      font-style: italic;
+    }
+    header {
+      padding: 1rem 1.5rem;
+      border-bottom: 1px solid var(--border);
+      background: var(--panel);
+      flex: 1;
+    }
+    header h1 { margin: 0; font-size: 1.25rem; font-weight: 600; }
+    header p { margin: 0.35rem 0 0; color: var(--muted); font-size: 0.9rem; }
+    main {
+      flex: 1;
+      max-width: none;
+      padding: 1.5rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1.5rem;
+    }
+    section {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 1.25rem;
+    }
+    section h2 {
+      margin: 0 0 1rem;
+      font-size: 1rem;
+      font-weight: 600;
+    }
+    label {
+      display: block;
+      font-size: 0.85rem;
+      color: var(--muted);
+      margin-bottom: 0.35rem;
+    }
+    input[type="text"],
+    input[type="number"],
+    select,
+    textarea {
+      width: 100%;
+      padding: 0.5rem 0.65rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      background: var(--bg);
+      color: var(--text);
+      font-size: 0.95rem;
+    }
+    textarea { min-height: 5rem; resize: vertical; }
+    .row {
+      display: grid;
+      gap: 0.75rem;
+      margin-bottom: 0.75rem;
+    }
+    @media (min-width: 640px) {
+      .row.cols-2 { grid-template-columns: 1fr 1fr; }
+    }
+    button {
+      cursor: pointer;
+      padding: 0.55rem 1rem;
+      border-radius: 6px;
+      border: none;
+      background: var(--accent);
+      color: #fff;
+      font-weight: 600;
+      font-size: 0.95rem;
+    }
+    button:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+      color: var(--text);
+    }
+    .checks { display: flex; flex-wrap: wrap; gap: 1rem; align-items: center; margin: 0.75rem 0; }
+    .checks label { display: inline-flex; align-items: center; gap: 0.4rem; margin: 0; color: var(--text); cursor: pointer; }
+    .msg {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 6px;
+      font-size: 0.9rem;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .msg.ok { background: rgba(63, 185, 80, 0.12); border: 1px solid var(--ok); }
+    .msg.err { background: rgba(248, 81, 73, 0.12); border: 1px solid var(--err); }
+    .msg.info { background: rgba(61, 139, 253, 0.1); border: 1px solid var(--accent); }
+    .answer {
+      margin-top: 0.75rem;
+      padding: 0.75rem;
+      border-radius: 6px;
+      background: var(--bg);
+      border: 1px solid var(--border);
+      white-space: pre-wrap;
+    }
+    .hit {
+      margin-top: 0.75rem;
+      padding: 0.65rem 0.75rem;
+      border-radius: 6px;
+      border: 1px solid var(--border);
+      font-size: 0.88rem;
+    }
+    .hit meta { color: var(--muted); font-size: 0.8rem; margin-bottom: 0.35rem; display: block; }
+    .hit pre { margin: 0; white-space: pre-wrap; word-break: break-word; font-family: inherit; }
+    .hits-note { margin-top: 0.75rem; font-size: 0.88rem; color: var(--muted); }
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <aside class="sidebar">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:0.5rem;">
+        <h3>Colecciones</h3>
+        <button onclick="loadCollections()" title="Actualizar" style="background:none;border:none;cursor:pointer;font-size:1rem;padding:2px 6px;color:var(--muted);">🔄</button>
+      </div>
+      <div id="collections-sidebar"></div>
+    </aside>
+    <div style="flex:1;display:flex;flex-direction:column;">
+      <header>
+        <h1>privrpg</h1>
+        <p>Ingesta y consulta sobre tu colección (Qdrant + embeddings). Asegúrate de tener el servicio vectorial en marcha.</p>
+      </header>
+  <main>
+    <section>
+      <h2>Ingestar documentos</h2>
+      <form id="ingest-form">
+        <div class="row">
+          <div>
+            <label for="ingest-files">Archivos (.md, .txt, .pdf, .rst)</label>
+            <input id="ingest-files" name="files" type="file" multiple required
+              accept=".md,.markdown,.txt,.pdf,.rst" />
+          </div>
+        </div>
+        <div class="row cols-2">
+          <div>
+            <label for="ingest-collection">Colección</label>
+            <input id="ingest-collection" name="collection" type="text" value="docs" />
+          </div>
+          <div>
+            <label for="ingest-game">Juego (opcional)</label>
+            <input id="ingest-game" name="game" type="text" placeholder="ej. dnd5e" />
+          </div>
+        </div>
+        <button type="submit" id="ingest-btn">Indexar</button>
+      </form>
+      <div id="ingest-msg" class="msg" style="display:none" role="status"></div>
+    </section>
+
+    <section>
+      <h2>Consultar</h2>
+      <form id="query-form">
+        <div class="row">
+          <div>
+            <label for="q-text">Pregunta</label>
+            <textarea id="q-text" name="question" required placeholder="¿Qué dice la regla sobre…?"></textarea>
+          </div>
+        </div>
+        <div class="row cols-2">
+          <div>
+            <label for="q-collection">Colección</label>
+            <input id="q-collection" name="collection" type="text" value="docs" />
+          </div>
+          <div>
+            <label for="q-limit">Fragmentos (k)</label>
+            <input id="q-limit" name="limit" type="number" min="1" max="50" value="5" />
+          </div>
+        </div>
+        <div class="row cols-2">
+          <div>
+            <label for="q-game">Filtrar por materia (opcional)</label>
+            <input id="q-game" name="game" type="text" placeholder="mismo valor que al indexar" />
+          </div>
+          <div>
+            <label for="q-prefix">Prefijo de ruta (opcional)</label>
+            <input id="q-prefix" name="source_prefix" type="text" placeholder="/ruta/absoluta/o/rela…" />
+          </div>
+        </div>
+        <div id="llm-controls">
+          <div class="row cols-2">
+            <div>
+              <label for="q-llm-backend">Proveedor LLM</label>
+              <select id="q-llm-backend">
+                <option value="">Predeterminado (.env)</option>
+                <option value="ollama">Ollama (local)</option>
+                <option value="openai">OpenAI</option>
+                <option value="openrouter">OpenRouter</option>
+                <option value="lmstudio">LM Studio (local)</option>
+              </select>
+            </div>
+            <div>
+              <label for="q-llm-model">Modelo</label>
+              <input id="q-llm-model" type="text" autocomplete="off" list="available-models" />
+              <datalist id="available-models"></datalist>
+            </div>
+          </div>
+          <div class="row">
+            <div>
+              <label for="q-max-tokens">max_tokens (opcional)</label>
+              <input id="q-max-tokens" type="number" min="1" max="256000" />
+            </div>
+          </div>
+          <div class="checks">
+            <label><input type="checkbox" id="q-citations" checked /> Pedir citas en la respuesta (más tokens)</label>
+          </div>
+        </div>
+        <div class="checks">
+          <label><input type="checkbox" id="q-no-llm" /> Solo recuperación (sin LLM)</label>
+        </div>
+        <button type="submit" id="query-btn">Preguntar</button>
+      </form>
+      <div id="query-answer" class="answer" style="display:none"></div>
+      <div id="query-hits"></div>
+      <div id="query-msg" class="msg" style="display:none" role="status"></div>
+    </section>
+    </main>
+  </div>
+    <aside class="sidebar sidebar-right">
+      <h3>Qdrant</h3>
+      <div id="qdrant-status-panel" class="status-panel">
+        <div class="no-collections">Comprobando…</div>
+      </div>
+    </aside>
+</div>
+  <script>
+    const STORAGE_KEY = "privrpg-form-state";
+
+    function saveFormState() {
+      const state = {
+        "ingest-collection": document.getElementById("ingest-collection").value,
+        "ingest-game": document.getElementById("ingest-game").value,
+        "q-collection": document.getElementById("q-collection").value,
+        "q-limit": document.getElementById("q-limit").value,
+        "q-game": document.getElementById("q-game").value,
+        "q-prefix": document.getElementById("q-prefix").value,
+        "q-no-llm": document.getElementById("q-no-llm").checked ? "1" : "",
+        "q-llm-backend": document.getElementById("q-llm-backend").value,
+      };
+      try {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+      } catch (_) {}
+    }
+
+    function loadFormState() {
+      try {
+        const raw = localStorage.getItem(STORAGE_KEY);
+        if (!raw) return;
+        const state = JSON.parse(raw);
+        const fields = ["ingest-collection", "ingest-game", "q-collection", "q-limit", "q-game", "q-prefix", "q-llm-backend"];
+        fields.forEach((id) => {
+          const el = document.getElementById(id);
+          if (el && state[id]) el.value = state[id];
+        });
+        const noLlm = document.getElementById("q-no-llm");
+        noLlm.checked = state["q-no-llm"] === "1";
+        // Disable LLM controls if no_llm is checked
+        setLlmControlsDisabled(noLlm.checked);
+      } catch (_) {}
+    }
+
+    // Load saved state on page load
+    loadFormState();
+
+    function show(el, text, kind) {
+      el.style.display = "block";
+      el.textContent = text;
+      el.className = "msg " + (kind || "info");
+    }
+    function hide(el) {
+      el.style.display = "none";
+      el.textContent = "";
+    }
+    function formatApiError(data) {
+      const d = data && data.detail;
+      if (Array.isArray(d)) {
+        return d.map((x) => x.msg || JSON.stringify(x)).join("\n");
+      }
+      if (typeof d === "string") return d;
+      return JSON.stringify(data);
+    }
+
+    let cfg = null;
+    function modelHintForBackend(backend) {
+      if (!cfg) return "(vacío = modelo del .env)";
+      if (backend === "ollama") return cfg.ollama_model || "(vacío = modelo del .env)";
+      if (backend === "openai") return cfg.openai_model || "(vacío = modelo del .env)";
+      if (backend === "openrouter") return cfg.openrouter_model || "(vacío = modelo del .env)";
+      if (backend === "lmstudio")
+        return (
+          cfg.lm_studio_model ||
+          "(obligatorio: id. del modelo en LM Studio)"
+        );
+      return "(vacío = modelo del .env)";
+    }
+    function updateLlmModelPlaceholder() {
+      const sel = document.getElementById("q-llm-backend").value;
+      document.getElementById("q-llm-model").placeholder =
+        "Ej.: " + modelHintForBackend(sel);
+    }
+    function setLlmControlsDisabled(disabled) {
+      document.getElementById("llm-controls").querySelectorAll("input, select").forEach((el) => {
+        el.disabled = disabled;
+      });
+    }
+    async function loadConfig() {
+      try {
+        const r = await fetch("/api/config");
+        if (r.ok) {
+          cfg = await r.json();
+          const mt = document.getElementById("q-max-tokens");
+          if (cfg.llm_max_tokens != null) {
+            mt.placeholder = "Vacío = usar " + cfg.llm_max_tokens + " (.env)";
+          } else {
+            mt.placeholder = "Vacío = default de la API";
+          }
+          updateLlmModelPlaceholder();
+          if (typeof cfg.llm_citations === "boolean") {
+            document.getElementById("q-citations").checked = cfg.llm_citations;
+          }
+          // Update model options after loading config
+          updateModelOptions();
+        }
+      } catch (_) {}
+    }
+
+    function updateModelOptions() {
+      const backend = document.getElementById("q-llm-backend").value;
+      const datalist = document.getElementById("available-models");
+      const input = document.getElementById("q-llm-model");
+
+      if (!cfg) return;
+
+      let models = [];
+      if (backend === "ollama") models = cfg.available_ollama_models || [];
+      else if (backend === "openai") models = cfg.available_openai_models || [];
+      else if (backend === "openrouter") models = cfg.available_openrouter_models || [];
+      else if (backend === "lmstudio") models = cfg.available_lm_studio_models || [];
+
+      datalist.innerHTML = models.map(m => `<option value="${escapeHtml(m)}">`).join("");
+      // If only one model, set it as value
+      if (models.length === 1) {
+        input.value = models[0];
+      }
+    }
+    document.getElementById("q-llm-backend").addEventListener("change", function () {
+      updateLlmModelPlaceholder();
+      updateModelOptions();
+    });
+    document.getElementById("q-no-llm").addEventListener("change", function () {
+      setLlmControlsDisabled(this.checked);
+    });
+    loadConfig();
+
+    document.getElementById("ingest-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("ingest-btn");
+      const msg = document.getElementById("ingest-msg");
+      const fd = new FormData(e.target);
+      btn.disabled = true;
+      hide(msg);
+      try {
+        const res = await fetch("/api/ingest", { method: "POST", body: fd });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          show(msg, formatApiError(data) || res.statusText || "Error", "err");
+          return;
+        }
+        const lines = data.files.map((f) => f.path + " → " + f.chunks + " chunks").join("\n");
+        // Save collection/game for next time
+        saveFormState();
+        show(msg, "Listo. Total chunks: " + data.total_chunks + "\n" + lines, "ok");
+        loadQdrantStatus();
+      } catch (err) {
+        show(msg, String(err), "err");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    document.getElementById("query-form").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const btn = document.getElementById("query-btn");
+      const answerEl = document.getElementById("query-answer");
+      const hitsEl = document.getElementById("query-hits");
+      const msg = document.getElementById("query-msg");
+      btn.disabled = true;
+      hide(msg);
+      hitsEl.innerHTML = "";
+      answerEl.style.display = "none";
+
+      const question = document.getElementById("q-text").value.trim();
+      const noLlm = document.getElementById("q-no-llm").checked;
+      const wantCitations = document.getElementById("q-citations").checked;
+      const body = {
+        question,
+        collection: document.getElementById("q-collection").value.trim() || "docs",
+        limit: parseInt(document.getElementById("q-limit").value, 10) || 5,
+        game: document.getElementById("q-game").value.trim() || null,
+        source_prefix: document.getElementById("q-prefix").value.trim() || null,
+        no_llm: noLlm,
+      };
+      if (!noLlm) {
+        const be = document.getElementById("q-llm-backend").value;
+        if (be) body.llm_backend = be;
+        const m = document.getElementById("q-llm-model").value.trim();
+        if (m) body.llm_model = m;
+        const mtx = document.getElementById("q-max-tokens").value.trim();
+        if (mtx) body.max_tokens = parseInt(mtx, 10);
+        body.include_citations = wantCitations;
+      }
+
+      try {
+        const res = await fetch("/api/query", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(body),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          show(msg, formatApiError(data) || res.statusText || "Error", "err");
+          return;
+        }
+        if (data.answer) {
+          answerEl.textContent = data.answer;
+          answerEl.style.display = "block";
+        } else {
+          answerEl.style.display = "none";
+        }
+        const showHitList = noLlm || (data.include_citations !== false);
+        if (showHitList) {
+          (data.hits || []).forEach((h, i) => {
+            const div = document.createElement("div");
+            div.className = "hit";
+            div.innerHTML =
+              "<strong>[" + (i + 1) + "]</strong> " +
+              "<span>" + (h.score != null ? h.score.toFixed(4) : "") + "</span> — " +
+              (h.source_path || "") +
+              "<pre>" + escapeHtml(h.text || "") + "</pre>";
+            hitsEl.appendChild(div);
+          });
+        } else {
+          const n = (data.hits || []).length;
+          if (n > 0) {
+            const p = document.createElement("p");
+            p.className = "hits-note";
+            p.textContent =
+              "Sin listado de fuentes (opción «sin citas»). Se usaron " + n + " fragmento(s) para generar la respuesta.";
+            hitsEl.appendChild(p);
+          }
+        }
+        // Save form state after successful query
+        saveFormState();
+        if (!data.answer && (!data.hits || !data.hits.length)) {
+          show(msg, "Sin resultados o sin respuesta del LLM. Revisa la colección y el .env.", "info");
+        }
+      } catch (err) {
+        show(msg, String(err), "err");
+      } finally {
+        btn.disabled = false;
+      }
+    });
+
+    function escapeHtml(s) {
+      const d = document.createElement("div");
+      d.textContent = s;
+      return d.innerHTML;
+    }
+
+    async function loadQdrantStatus() {
+      const panel = document.getElementById("qdrant-status-panel");
+      if (!panel) return;
+      try {
+        const res = await fetch("/api/health");
+        const data = await res.json().catch(() => ({}));
+        const qOk = res.ok && data.qdrant === "ok";
+        const badge = qOk
+          ? '<div class="status-badge ok">Conectado</div>'
+          : '<div class="status-badge err">Sin conexión</div>';
+        const detail =
+          !qOk && data.qdrant != null && String(data.qdrant) !== "ok"
+            ? '<div class="status-detail">' + escapeHtml(String(data.qdrant)) + "</div>"
+            : "";
+        const url = data.qdrant_url
+          ? '<div class="status-url-label">URL</div><div class="status-url">' +
+            escapeHtml(String(data.qdrant_url)) +
+            "</div>"
+          : "";
+        panel.innerHTML =
+          badge +
+          detail +
+          url +
+          '<button type="button" class="secondary sidebar-status-refresh" id="qdrant-refresh-btn">Actualizar</button>';
+        const btn = document.getElementById("qdrant-refresh-btn");
+        if (btn) btn.addEventListener("click", () => loadQdrantStatus());
+      } catch (err) {
+        panel.innerHTML =
+          '<div class="status-badge err">Sin conexión</div>' +
+          '<div class="status-detail">' + escapeHtml(String(err)) + "</div>" +
+          '<button type="button" class="secondary sidebar-status-refresh" id="qdrant-refresh-btn">Actualizar</button>';
+        const btn = document.getElementById("qdrant-refresh-btn");
+        if (btn) btn.addEventListener("click", () => loadQdrantStatus());
+      }
+    }
+
+    // Load collections for sidebar
+    async function loadCollections() {
+      const container = document.getElementById("collections-sidebar");
+      try {
+        const res = await fetch("/api/collections");
+        if (!res.ok) throw new Error(res.statusText);
+        const data = await res.json();
+        const collections = data.collections || [];
+        
+        if (collections.length === 0) {
+          container.innerHTML = '<div class="no-collections">Sin colecciones</div>';
+          return;
+        }
+        
+        container.innerHTML = collections.map(c => `
+          <div class="collection-item" data-name="${escapeHtml(c.name)}">
+            <span title="${escapeHtml(c.name)}">${escapeHtml(c.name)}</span>
+            <button class="delete-btn" onclick="event.stopPropagation(); deleteCollection('${escapeHtml(c.name)}')">×</button>
+          </div>
+        `).join("");
+        
+        // Add click to select collection
+        container.querySelectorAll(".collection-item").forEach(item => {
+          item.addEventListener("click", () => {
+            const name = item.dataset.name;
+            // Set both collection inputs
+            document.getElementById("ingest-collection").value = name;
+            document.getElementById("q-collection").value = name;
+            // Visual feedback
+            container.querySelectorAll(".collection-item").forEach(i => i.classList.remove("active"));
+            item.classList.add("active");
+          });
+        });
+      } catch (e) {
+        container.innerHTML = '<div class="no-collections">Error al cargar</div>';
+      }
+    }
+
+    async function deleteCollection(name) {
+      if (!confirm("¿Eliminar colección \"" + name + "\"?")) return;
+      try {
+        const res = await fetch("/api/collections/" + name, { method: "DELETE" });
+        if (res.ok) {
+          loadCollections();
+          loadQdrantStatus();
+        } else {
+          const data = await res.json();
+          alert("Error: " + (data.detail || res.statusText));
+        }
+      } catch (e) {
+        alert("Error: " + e);
+      }
+    }
+
+    // Load on page load
+    loadCollections();
+    loadQdrantStatus();
+    setInterval(loadQdrantStatus, 30000);
+  </script>
+</body>
+</html>
