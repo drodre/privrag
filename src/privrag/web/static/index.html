@@ -292,6 +292,12 @@
             <input id="q-prefix" name="source_prefix" type="text" placeholder="/ruta/absoluta/o/rela…" />
           </div>
         </div>
+        <div class="row">
+          <div>
+            <label for="q-qdrant-timeout">Timeout Qdrant (segundos)</label>
+            <input id="q-qdrant-timeout" type="number" min="1" max="3600" />
+          </div>
+        </div>
         <div id="llm-controls">
           <div class="row cols-2">
             <div>
@@ -349,6 +355,7 @@
         "q-limit": document.getElementById("q-limit").value,
         "q-game": document.getElementById("q-game").value,
         "q-prefix": document.getElementById("q-prefix").value,
+        "q-qdrant-timeout": document.getElementById("q-qdrant-timeout").value,
         "q-no-llm": document.getElementById("q-no-llm").checked ? "1" : "",
         "q-llm-backend": document.getElementById("q-llm-backend").value,
       };
@@ -362,7 +369,7 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
         const state = JSON.parse(raw);
-        const fields = ["ingest-collection", "ingest-game", "q-collection", "q-limit", "q-game", "q-prefix", "q-llm-backend"];
+        const fields = ["ingest-collection", "ingest-game", "q-collection", "q-limit", "q-game", "q-prefix", "q-qdrant-timeout", "q-llm-backend"];
         fields.forEach((id) => {
           const el = document.getElementById(id);
           if (el && state[id]) el.value = state[id];
@@ -394,6 +401,12 @@
       if (typeof d === "string") return d;
       return JSON.stringify(data);
     }
+    function formatElapsed(ms) {
+      if (ms == null || Number.isNaN(Number(ms))) return "";
+      const seconds = Number(ms) / 1000;
+      if (seconds < 1) return Number(ms).toFixed(0) + " ms";
+      return seconds.toFixed(2) + " s";
+    }
 
     let cfg = null;
     function modelHintForBackend(backend) {
@@ -424,10 +437,16 @@
         if (r.ok) {
           cfg = await r.json();
           const mt = document.getElementById("q-max-tokens");
+          const qt = document.getElementById("q-qdrant-timeout");
           if (cfg.llm_max_tokens != null) {
             mt.placeholder = "Vacío = usar " + cfg.llm_max_tokens + " (.env)";
           } else {
             mt.placeholder = "Vacío = default de la API";
+          }
+          if (cfg.qdrant_timeout != null) {
+            qt.placeholder = "Vacío = usar " + cfg.qdrant_timeout + " (.env)";
+          } else {
+            qt.placeholder = "Vacío = default de Qdrant";
           }
           updateLlmModelPlaceholder();
           if (typeof cfg.llm_citations === "boolean") {
@@ -515,6 +534,8 @@
         source_prefix: document.getElementById("q-prefix").value.trim() || null,
         no_llm: noLlm,
       };
+      const qto = document.getElementById("q-qdrant-timeout").value.trim();
+      if (qto) body.qdrant_timeout = parseInt(qto, 10);
       if (!noLlm) {
         const be = document.getElementById("q-llm-backend").value;
         if (be) body.llm_backend = be;
@@ -566,8 +587,16 @@
         }
         // Save form state after successful query
         saveFormState();
+        const elapsed = formatElapsed(data.elapsed_ms);
         if (!data.answer && (!data.hits || !data.hits.length)) {
-          show(msg, "Sin resultados o sin respuesta del LLM. Revisa la colección y el .env.", "info");
+          show(
+            msg,
+            "Sin resultados o sin respuesta del LLM. Revisa la colección y el .env." +
+              (elapsed ? "\nTiempo de consulta: " + elapsed : ""),
+            "info"
+          );
+        } else if (elapsed) {
+          show(msg, "Tiempo de consulta: " + elapsed, "ok");
         }
       } catch (err) {
         show(msg, String(err), "err");
@@ -601,10 +630,16 @@
             escapeHtml(String(data.qdrant_url)) +
             "</div>"
           : "";
+        const timeout = data.qdrant_timeout
+          ? '<div class="status-url-label">Timeout</div><div class="status-url">' +
+            escapeHtml(String(data.qdrant_timeout)) +
+            "s</div>"
+          : "";
         panel.innerHTML =
           badge +
           detail +
           url +
+          timeout +
           '<button type="button" class="secondary sidebar-status-refresh" id="qdrant-refresh-btn">Actualizar</button>';
         const btn = document.getElementById("qdrant-refresh-btn");
         if (btn) btn.addEventListener("click", () => loadQdrantStatus());

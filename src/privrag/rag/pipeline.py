@@ -43,9 +43,10 @@ def retrieve(
     limit: int = 5,
     filter_topic: str | None = None,
     source_path_prefix: str | None = None,
+    qdrant_timeout: int | None = None,
 ) -> list[SearchHit]:
     embedder = get_embedder()
-    store = QdrantStore()
+    store = QdrantStore(timeout=qdrant_timeout)
     store.ensure_collection(collection, embedder.vector_size)
     qv = embedder.encode([question])[0]
     return store.search(
@@ -54,6 +55,7 @@ def retrieve(
         limit=limit,
         filter_topic=filter_topic,
         source_path_prefix=source_path_prefix,
+        timeout=qdrant_timeout,
     )
 
 
@@ -68,6 +70,7 @@ def answer(
     llm_model: str | None = None,
     max_tokens: int | None = None,
     include_citations: bool | None = None,
+    qdrant_timeout: int | None = None,
 ) -> tuple[list[SearchHit], str | None]:
     """Devuelve (hits, respuesta_llm o None si solo recuperación)."""
     hits = retrieve(
@@ -76,6 +79,7 @@ def answer(
         limit=limit,
         filter_topic=filter_topic,
         source_path_prefix=source_path_prefix,
+        qdrant_timeout=qdrant_timeout,
     )
     s = get_settings()
     want_llm = use_llm if use_llm is not None else (s.llm_backend != LLMBackend.NONE)

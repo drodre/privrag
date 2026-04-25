@@ -33,6 +33,11 @@ class TestSettingsDefaults:
             s = Settings()
             assert s.qdrant_url == "http://localhost:6333"
 
+    def test_defaults_qdrant_timeout(self):
+        with _clean_env():
+            s = Settings()
+            assert s.qdrant_timeout == 30
+
     def test_defaults_embedding_backend(self):
         with _clean_env():
             s = Settings()
@@ -71,6 +76,11 @@ class TestSettingsEnvVars:
         with _clean_env({"QDRANT_API_KEY": "secret123"}):
             s = Settings()
             assert s.qdrant_api_key == "secret123"
+
+    def test_qdrant_timeout_from_env(self):
+        with _clean_env({"QDRANT_TIMEOUT": "60"}):
+            s = Settings()
+            assert s.qdrant_timeout == 60
 
     def test_embedding_backend_openai(self):
         with _clean_env({"EMBEDDING_BACKEND": "openai"}):
@@ -137,6 +147,11 @@ class TestInvalidEnumValues:
 
     def test_llm_max_tokens_zero(self):
         with _clean_env({"LLM_MAX_TOKENS": "0"}):
+            with pytest.raises(ValidationError):
+                Settings()
+
+    def test_qdrant_timeout_zero(self):
+        with _clean_env({"QDRANT_TIMEOUT": "0"}):
             with pytest.raises(ValidationError):
                 Settings()
 

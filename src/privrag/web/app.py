@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import shutil
 import tempfile
+import time
 from pathlib import Path
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
@@ -25,6 +26,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+
+def _qdrant_client():
+    from qdrant_client import QdrantClient
+
+    s = get_settings()
+    return QdrantClient(
+        url=s.qdrant_url,
+        api_key=s.qdrant_api_key,
+        check_compatibility=False,
+        timeout=s.qdrant_timeout,
+    )
 
 
 def _parse_llm_backend(raw: str | None) -> LLMBackend | None:
@@ -53,20 +66,17 @@ def index() -> FileResponse:
 @app.get("/status")
 def status_page():
     """Página de estado de la aplicación."""
-    from qdrant_client import QdrantClient
-    import json
-
     s = get_settings()
     qdrant_status = "unknown"
     collections = []
     qdrant_version = None
 
     try:
-        client = QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key)
-        client.get_collections()
+        client = _qdrant_client()
+        collection_result = client.get_collections()
         qdrant_status = "ok"
         # Obtener lista de colecciones
-        collections = [c.name for c in client.get_collections().collections]
+        collections = [c.name for c in collection_result.collections]
         # Obtener versión de Qdrant
         try:
             info = client.get_cluster_info()
@@ -158,18 +168,16 @@ def debug_lmstudio() -> JSONResponse:
 @app.get("/api/health")
 def health_check() -> JSONResponse:
     """Health check: verifica estado de Qdrant y servicios."""
-    from qdrant_client import QdrantClient
-
     s = get_settings()
     qdrant_status = "unknown"
     collections = []
 
     try:
-        client = QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key)
-        client.get_collections()
+        client = _qdrant_client()
+        collection_result = client.get_collections()
         qdrant_status = "ok"
         # Obtener lista de colecciones
-        collections = [c.name for c in client.get_collections().collections]
+        collections = [c.name for c in collection_result.collections]
     except Exception as e:
         qdrant_status = f"error: {type(e).__name__}"
 
@@ -178,6 +186,7 @@ def health_check() -> JSONResponse:
             "status": "ok" if qdrant_status == "ok" else "degraded",
             "qdrant": qdrant_status,
             "qdrant_url": s.qdrant_url,
+            "qdrant_timeout": s.qdrant_timeout,
             "collections": collections,
         }
     )
@@ -186,13 +195,10 @@ def health_check() -> JSONResponse:
 @app.get("/api/collections")
 def list_collections() -> JSONResponse:
     """Lista todas las colecciones con información."""
-    from qdrant_client import QdrantClient
-
-    s = get_settings()
     collections = []
 
     try:
-        client = QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key)
+        client = _qdrant_client()
         result = client.get_collections()
         collections = [
             {
@@ -221,6 +227,7 @@ def api_config() -> JSONResponse:
     return JSONResponse(
         {
             "llm_backend": s.llm_backend.value,
+            "qdrant_timeout": s.qdrant_timeout,
             "ollama_model": s.ollama_model,
             "openai_model": s.openai_model,
             "openrouter_model": s.openrouter_model,
@@ -248,6 +255,7 @@ class QueryBody(BaseModel):
     llm_model: str | None = None
     max_tokens: int | None = Field(None, ge=1, le=256000)
     include_citations: bool = True
+    qdrant_timeout: int | None = Field(None, ge=1, le=3600)
 
 
 @app.post("/api/ingest")
@@ -295,6 +303,8 @@ async def api_ingest(
 
 @app.post("/api/query")
 def api_query(body: QueryBody) -> JSONResponse:
+    started_at = time.perf_counter()
+
     prefix = None
     if body.source_prefix and body.source_prefix.strip():
         prefix = str(Path(body.source_prefix.strip()).expanduser().resolve())
@@ -302,16 +312,21 @@ def api_query(body: QueryBody) -> JSONResponse:
     topic = (body.topic or "").strip() or None
 
     if body.no_llm:
-        hits = retrieve(
-            body.question,
-            body.collection,
-            limit=body.limit,
-            filter_topic=topic,
-            source_path_prefix=prefix,
-        )
+        try:
+            hits = retrieve(
+                body.question,
+                body.collection,
+                limit=body.limit,
+                filter_topic=topic,
+                source_path_prefix=prefix,
+                qdrant_timeout=body.qdrant_timeout,
+            )
+        except TimeoutError as e:
+            raise HTTPException(status_code=504, detail=str(e)) from e
         return JSONResponse(
             {
                 "answer": None,
+                "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 1),
                 "include_citations": True,
                 "hits": [
                     {
@@ -336,12 +351,16 @@ def api_query(body: QueryBody) -> JSONResponse:
             llm_model=(body.llm_model or "").strip() or None,
             max_tokens=body.max_tokens,
             include_citations=body.include_citations,
+            qdrant_timeout=body.qdrant_timeout,
         )
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=str(e)) from e
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e)) from e
     return JSONResponse(
         {
             "answer": reply,
+            "elapsed_ms": round((time.perf_counter() - started_at) * 1000, 1),
             "include_citations": body.include_citations,
             "hits": [
                 {
@@ -358,14 +377,11 @@ def api_query(body: QueryBody) -> JSONResponse:
 @app.delete("/api/collections/{collection}")
 def delete_collection(collection: str) -> JSONResponse:
     """Elimina una colección de Qdrant."""
-    from qdrant_client import QdrantClient
-
     if not collection or not collection.strip():
         raise HTTPException(status_code=400, detail="Nombre de colección requerido")
 
-    s = get_settings()
     try:
-        client = QdrantClient(url=s.qdrant_url, api_key=s.qdrant_api_key)
+        client = _qdrant_client()
         client.delete_collection(collection)
         return JSONResponse({"ok": True, "collection": collection, "deleted": True})
     except Exception as e:

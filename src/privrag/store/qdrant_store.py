@@ -4,7 +4,9 @@ import uuid
 from dataclasses import dataclass
 from pathlib import Path
 
+import httpx
 from qdrant_client import QdrantClient
+from qdrant_client.http.exceptions import ResponseHandlingException
 from qdrant_client.http import models as qm
 
 from privrag.config import get_settings
@@ -18,36 +20,63 @@ class SearchHit:
 
 
 class QdrantStore:
-    def __init__(self, url: str | None = None, api_key: str | None = None) -> None:
+    def __init__(
+        self,
+        url: str | None = None,
+        api_key: str | None = None,
+        timeout: int | None = None,
+    ) -> None:
         s = get_settings()
         key = api_key if api_key is not None else s.qdrant_api_key
-        kwargs: dict = {"url": url or s.qdrant_url, "check_compatibility": False}
+        self._timeout = timeout or s.qdrant_timeout
+        kwargs: dict = {
+            "url": url or s.qdrant_url,
+            "check_compatibility": False,
+            "timeout": self._timeout,
+        }
         if key:
             kwargs["api_key"] = key
         self._client = QdrantClient(**kwargs)
 
+    def _raise_timeout(self, operation: str, exc: Exception) -> None:
+        current: Exception | None = exc
+        while current is not None:
+            if isinstance(current, ResponseHandlingException):
+                current = current.source
+                continue
+            if isinstance(current, httpx.TimeoutException):
+                raise TimeoutError(
+                    f"Timeout de Qdrant durante {operation} tras {self._timeout}s. "
+                    "Sube QDRANT_TIMEOUT o el campo 'Timeout Qdrant' en la consulta."
+                ) from exc
+            current = current.__cause__
+        raise exc
+
     def ensure_collection(self, name: str, vector_size: int) -> None:
-        if self._client.collection_exists(name):
-            info = self._client.get_collection(name)
-            existing = info.config.params.vectors
-            existing_size: int | None = None
-            if isinstance(existing, qm.VectorParams):
-                existing_size = existing.size
-            elif isinstance(existing, dict) and existing:
-                first = next(iter(existing.values()))
-                if isinstance(first, qm.VectorParams):
-                    existing_size = first.size
-            if existing_size is not None and existing_size != vector_size:
-                raise ValueError(
-                    f"La colección {name!r} tiene dimensión {existing_size}, "
-                    f"pero el embedder actual produce {vector_size}. "
-                    "Usa otra colección o re-embeda con el mismo modelo."
-                )
-            return
-        self._client.create_collection(
-            collection_name=name,
-            vectors_config=qm.VectorParams(size=vector_size, distance=qm.Distance.COSINE),
-        )
+        try:
+            if self._client.collection_exists(name):
+                info = self._client.get_collection(name)
+                existing = info.config.params.vectors
+                existing_size: int | None = None
+                if isinstance(existing, qm.VectorParams):
+                    existing_size = existing.size
+                elif isinstance(existing, dict) and existing:
+                    first = next(iter(existing.values()))
+                    if isinstance(first, qm.VectorParams):
+                        existing_size = first.size
+                if existing_size is not None and existing_size != vector_size:
+                    raise ValueError(
+                        f"La colección {name!r} tiene dimensión {existing_size}, "
+                        f"pero el embedder actual produce {vector_size}. "
+                        "Usa otra colección o re-embeda con el mismo modelo."
+                    )
+                return
+            self._client.create_collection(
+                collection_name=name,
+                vectors_config=qm.VectorParams(size=vector_size, distance=qm.Distance.COSINE),
+            )
+        except Exception as e:
+            self._raise_timeout("comprobar la colección", e)
 
     def upsert_chunks(
         self,
@@ -76,7 +105,10 @@ class QdrantStore:
                     payload=payload,
                 )
             )
-        self._client.upload_points(collection_name=collection, points=points)
+        try:
+            self._client.upload_points(collection_name=collection, points=points)
+        except Exception as e:
+            self._raise_timeout("subir puntos", e)
 
     def search(
         self,
@@ -85,6 +117,7 @@ class QdrantStore:
         limit: int = 5,
         filter_topic: str | None = None,
         source_path_prefix: str | None = None,
+        timeout: int | None = None,
     ) -> list[SearchHit]:
         """Búsqueda por similitud. `filter_topic` aplica filtro en Qdrant; `source_path_prefix`
         filtra por prefijo de `source_path` en cliente (tras ampliar el límite de recuperación).
@@ -100,14 +133,18 @@ class QdrantStore:
         if source_path_prefix:
             fetch_limit = min(max(limit * 25, 50), 500)
 
-        res = self._client.query_points(
-            collection_name=collection,
-            query=vector,
-            query_filter=query_filter,
-            limit=fetch_limit,
-            with_payload=True,
-            search_params=qm.SearchParams(hnsw_ef=128),
-        )
+        try:
+            res = self._client.query_points(
+                collection_name=collection,
+                query=vector,
+                query_filter=query_filter,
+                limit=fetch_limit,
+                with_payload=True,
+                search_params=qm.SearchParams(hnsw_ef=128),
+                timeout=timeout or self._timeout,
+            )
+        except Exception as e:
+            self._raise_timeout("buscar puntos", e)
         hits: list[SearchHit] = []
         for p in res.points or []:
             score = float(p.score) if p.score is not None else 0.0

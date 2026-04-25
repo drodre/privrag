@@ -37,6 +37,7 @@ with (
     mock_s.llm_max_tokens = None
     mock_s.llm_citations = True
     mock_s.llm_max_context_chars = 24000
+    mock_s.qdrant_timeout = 30
     mock_settings.return_value = mock_s
 
     # Mock de embedder
@@ -89,6 +90,7 @@ class TestApiConfig:
             "lm_studio_model",
             "llm_max_tokens",
             "llm_citations",
+            "qdrant_timeout",
         ]
         for field in required:
             assert field in data, f"Missing field: {field}"
@@ -167,6 +169,22 @@ class TestQueryBodyValidation:
         response = client.post(
             "/api/query",
             json={"question": "test?", "collection": "test", "max_tokens": 0},
+        )
+        assert response.status_code == 422
+
+    def test_qdrant_timeout_min(self):
+        """qdrant_timeout debe ser >= 1."""
+        response = client.post(
+            "/api/query",
+            json={"question": "test?", "collection": "test", "qdrant_timeout": 0},
+        )
+        assert response.status_code == 422
+
+    def test_qdrant_timeout_max(self):
+        """qdrant_timeout debe ser <= 3600."""
+        response = client.post(
+            "/api/query",
+            json={"question": "test?", "collection": "test", "qdrant_timeout": 3601},
         )
         assert response.status_code == 422
 
