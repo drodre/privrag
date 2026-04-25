@@ -194,10 +194,10 @@ class TestQueryBodyDefaults:
         body = QueryBody(question="test?")
         assert body.include_citations is True
 
-    def test_default_game(self):
-        """game por defecto."""
+    def test_default_topic(self):
+        """topic por defecto."""
         body = QueryBody(question="test?")
-        assert body.game is None
+        assert body.topic is None
 
 
 class TestApiIngestValidation:

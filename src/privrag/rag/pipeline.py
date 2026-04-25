@@ -41,7 +41,7 @@ def retrieve(
     question: str,
     collection: str,
     limit: int = 5,
-    filter_game: str | None = None,
+    filter_topic: str | None = None,
     source_path_prefix: str | None = None,
 ) -> list[SearchHit]:
     embedder = get_embedder()
@@ -52,7 +52,7 @@ def retrieve(
         collection,
         qv,
         limit=limit,
-        filter_game=filter_game,
+        filter_topic=filter_topic,
         source_path_prefix=source_path_prefix,
     )
 
@@ -62,7 +62,7 @@ def answer(
     collection: str,
     limit: int = 5,
     use_llm: bool | None = None,
-    filter_game: str | None = None,
+    filter_topic: str | None = None,
     source_path_prefix: str | None = None,
     llm_backend: LLMBackend | None = None,
     llm_model: str | None = None,
@@ -74,7 +74,7 @@ def answer(
         question,
         collection,
         limit=limit,
-        filter_game=filter_game,
+        filter_topic=filter_topic,
         source_path_prefix=source_path_prefix,
     )
     s = get_settings()

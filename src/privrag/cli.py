@@ -13,11 +13,11 @@ app = typer.Typer(no_args_is_help=True, help="RAG para documentos de RPG (Qdrant
 def ingest(
     path: Path = typer.Argument(..., help="Archivo o carpeta con .md, .txt, .pdf"),
     collection: str = typer.Option("docs", "--collection", "-c", help="Nombre de la colección Qdrant"),
-    game: str | None = typer.Option(None, "--game", "-g", help="Metadato opcional (ej. dnd5e)"),
+    topic: str | None = typer.Option(None, "--topic", "-t", help="Metadato opcional (ej. dnd5e)"),
 ) -> None:
     """Indexa documentos en Qdrant (chunk → embed → upsert)."""
     try:
-        results = ingest_path(path, collection, game)
+        results = ingest_path(path, collection, topic)
     except ValueError as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
@@ -37,11 +37,11 @@ def query(
     collection: str = typer.Option("docs", "--collection", "-c"),
     limit: int = typer.Option(5, "--limit", "-k", help="Fragmentos a recuperar"),
     no_llm: bool = typer.Option(False, "--no-llm", help="Solo mostrar pasajes recuperados"),
-    game: str | None = typer.Option(
+    topic: str | None = typer.Option(
         None,
-        "--game",
-        "-g",
-        help="Solo chunks con este metadato (debe coincidir con ingest --game)",
+        "--topic",
+        "-t",
+        help="Solo chunks con este metadato (debe coincidir con ingest --topic)",
     ),
     source_prefix: Path | None = typer.Option(
         None,
@@ -61,7 +61,7 @@ def query(
             question,
             collection,
             limit=limit,
-            filter_game=game,
+            filter_topic=topic,
             source_path_prefix=prefix,
         )
         for h in hits:
@@ -77,7 +77,7 @@ def query(
         collection,
         limit=limit,
         use_llm=True,
-        filter_game=game,
+        filter_topic=topic,
         source_path_prefix=prefix,
         include_citations=not no_citations,
     )

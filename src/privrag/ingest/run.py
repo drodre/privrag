@@ -8,7 +8,7 @@ from privrag.ingest import chunk_text, iter_documents, read_file_text
 from privrag.store import QdrantStore
 
 
-def ingest_path(path: Path, collection: str, game: str | None = None) -> list[tuple[str, int]]:
+def ingest_path(path: Path, collection: str, topic: str | None = None) -> list[tuple[str, int]]:
     """Indexa un archivo o carpeta. Devuelve lista de (ruta absoluta, número de chunks) por archivo."""
     s = get_settings()
     embedder = get_embedder()
@@ -28,8 +28,8 @@ def ingest_path(path: Path, collection: str, game: str | None = None) -> list[tu
             continue
         vectors = embedder.encode(chunks)
         common: dict = {}
-        if game:
-            common["game"] = game
+        if topic:
+            common["topic"] = topic
         store.upsert_chunks(
             collection=collection,
             texts=chunks,

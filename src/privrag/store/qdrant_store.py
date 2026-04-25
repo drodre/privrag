@@ -83,16 +83,16 @@ class QdrantStore:
         collection: str,
         vector: list[float],
         limit: int = 5,
-        filter_game: str | None = None,
+        filter_topic: str | None = None,
         source_path_prefix: str | None = None,
     ) -> list[SearchHit]:
-        """Búsqueda por similitud. `filter_game` aplica filtro en Qdrant; `source_path_prefix`
+        """Búsqueda por similitud. `filter_topic` aplica filtro en Qdrant; `source_path_prefix`
         filtra por prefijo de `source_path` en cliente (tras ampliar el límite de recuperación).
         """
         must: list[qm.FieldCondition] = []
-        if filter_game is not None:
+        if filter_topic is not None:
             must.append(
-                qm.FieldCondition(key="game", match=qm.MatchValue(value=filter_game)),
+                qm.FieldCondition(key="topic", match=qm.MatchValue(value=filter_topic)),
             )
         query_filter: qm.Filter | None = qm.Filter(must=must) if must else None
 

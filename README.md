@@ -91,19 +91,19 @@ Indexa un **archivo** o todos los documentos admitidos bajo una **carpeta** (rec
 **Formatos:** `.md`, `.markdown`, `.txt`, `.rst`, `.pdf`
 
 ```bash
-privrag ingest RUTA [--collection NOMBRE] [--game ETIQUETA]
+privrag ingest RUTA [--collection NOMBRE] [--topic ETIQUETA]
 ```
 
 | Opción | Corto | Descripción |
 |--------|-------|-------------|
 | `--collection` | `-c` | Nombre de la colección en Qdrant (por defecto `docs`) |
-| `--game` | `-g` | Metadato opcional guardado en cada chunk (p. ej. `dnd5e`) |
+| `--topic` | `-g` | Metadato opcional guardado en cada chunk (p. ej. `dnd5e`) |
 
 **Ejemplo:**
 
 ```bash
 privrag ingest ./examples --collection docs
-privrag ingest ./mis_reglas --collection dnd --game dnd5e
+privrag ingest ./mis_reglas --collection dnd --topic dnd5e
 ```
 
 La primera vez descargará el modelo de embeddings local (Hugging Face) si usas `EMBEDDING_BACKEND=local`.
@@ -113,7 +113,7 @@ La primera vez descargará el modelo de embeddings local (Hugging Face) si usas 
 Recupera los fragmentos más similares a tu pregunta y, según `LLM_BACKEND`, genera una respuesta con contexto o solo muestra pasajes.
 
 ```bash
-privrag query "TU PREGUNTA" [--collection NOMBRE] [--limit K] [--no-llm] [--no-citations] [--game ETIQUETA] [--source-prefix RUTA]
+privrag query "TU PREGUNTA" [--collection NOMBRE] [--limit K] [--no-llm] [--no-citations] [--topic ETIQUETA] [--source-prefix RUTA]
 ```
 
 | Opción | Corto | Descripción |
@@ -122,7 +122,7 @@ privrag query "TU PREGUNTA" [--collection NOMBRE] [--limit K] [--no-llm] [--no-c
 | `--limit` | `-k` | Número de fragmentos a recuperar (por defecto 5) |
 | `--no-llm` | — | Solo búsqueda vectorial: imprime puntuación, ruta y texto de cada hit (sin LLM) |
 | `--no-citations` | — | Respuesta del LLM sin pedir citas; contexto sin rutas (menos tokens); no imprime el bloque «Fuentes» al final |
-| `--game` | `-g` | Solo chunks indexados con ese metadato (mismo valor que `ingest --game`) |
+| `--topic` | `-g` | Solo chunks indexados con ese metadato (mismo valor que `ingest --topic`) |
 | `--source-prefix` | — | Solo fuentes cuya ruta absoluta empieza por la indicada (archivo o carpeta) |
 
 **Ejemplos:**
@@ -135,7 +135,7 @@ privrag query "¿Cómo funciona la iniciativa?" --collection docs
 privrag query "iniciativa" --collection docs --no-llm
 
 # Filtrar por materia o por carpeta (útil con varios sistemas en la misma colección)
-privrag query "ventaja" --collection docs --game dnd5e --no-llm
+privrag query "ventaja" --collection docs --topic dnd5e --no-llm
 privrag query "tabla" --collection docs --source-prefix ./examples --no-llm
 ```
 

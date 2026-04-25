@@ -241,7 +241,7 @@ class QueryBody(BaseModel):
     question: str = Field(..., min_length=1)
     collection: str = "docs"
     limit: int = Field(5, ge=1, le=50)
-    game: str | None = None
+    topic: str | None = None
     source_prefix: str | None = None
     no_llm: bool = False
     llm_backend: str | None = None
@@ -254,12 +254,12 @@ class QueryBody(BaseModel):
 async def api_ingest(
     files: list[UploadFile] = File(...),
     collection: str = Form("docs"),
-    game: str | None = Form(None),
+    topic: str | None = Form(None),
 ) -> JSONResponse:
     if not files:
         raise HTTPException(status_code=400, detail="Sube al menos un archivo.")
 
-    game = (game or "").strip() or None
+    topic = (topic or "").strip() or None
 
     tmp = Path(tempfile.mkdtemp(prefix="privrag_ingest_"))
     try:
@@ -276,7 +276,7 @@ async def api_ingest(
             raise HTTPException(status_code=400, detail="No se pudo guardar ningún archivo válido.")
 
         try:
-            results = ingest_path(tmp, collection, game)
+            results = ingest_path(tmp, collection, topic)
         except ValueError as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
     finally:
@@ -299,14 +299,14 @@ def api_query(body: QueryBody) -> JSONResponse:
     if body.source_prefix and body.source_prefix.strip():
         prefix = str(Path(body.source_prefix.strip()).expanduser().resolve())
 
-    game = (body.game or "").strip() or None
+    topic = (body.topic or "").strip() or None
 
     if body.no_llm:
         hits = retrieve(
             body.question,
             body.collection,
             limit=body.limit,
-            filter_game=game,
+            filter_topic=topic,
             source_path_prefix=prefix,
         )
         return JSONResponse(
@@ -330,7 +330,7 @@ def api_query(body: QueryBody) -> JSONResponse:
             body.collection,
             limit=body.limit,
             use_llm=True,
-            filter_game=game,
+            filter_topic=topic,
             source_path_prefix=prefix,
             llm_backend=_parse_llm_backend(body.llm_backend),
             llm_model=(body.llm_model or "").strip() or None,
