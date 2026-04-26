@@ -554,7 +554,7 @@
         const res = await fetch("/api/ingest", { method: "POST", body: fd });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          renderQueryError(data, res.statusText, answerEl, msg);
+          show(msg, formatApiError(data) || res.statusText || "Error", "err");
           return;
         }
         const lines = data.files.map((f) => {
@@ -639,7 +639,7 @@
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) {
-          show(msg, formatApiError(data) || res.statusText || "Error", "err");
+          renderQueryError(data, res.statusText, answerEl, msg);
           return;
         }
         if (data.answer) {

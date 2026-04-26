@@ -254,6 +254,15 @@ class TestApiIngestValidation:
         # Puede ser 400 o 422 dependiendo de cómo FastAPI maneja el form
         assert response.status_code in [400, 422]
 
+    def test_ocr_timeout_must_be_positive(self):
+        """ocr_timeout debe ser >= 1."""
+        response = client.post(
+            "/api/ingest",
+            data={"collection": "test", "ocr_timeout": 0},
+            files={"files": ("sample.txt", b"hello", "text/plain")},
+        )
+        assert response.status_code == 422
+
 
 class TestApiQueryValidation:
     """Tests de validación de endpoints query."""

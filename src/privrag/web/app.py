@@ -270,7 +270,7 @@ async def api_ingest(
     topic: str | None = Form(None),
     ocr_pdf: bool | None = Form(None),
     ocr_language: str | None = Form(None),
-    ocr_timeout: int | None = Form(None),
+    ocr_timeout: int | None = Form(None, ge=1, le=7200),
 ) -> JSONResponse:
     if not files:
         raise HTTPException(status_code=400, detail="Sube al menos un archivo.")
