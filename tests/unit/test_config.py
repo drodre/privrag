@@ -68,6 +68,14 @@ class TestSettingsDefaults:
             s = Settings()
             assert s.chunk_overlap == 64
 
+    def test_defaults_ocr(self):
+        with _clean_env():
+            s = Settings()
+            assert s.ocr_enabled is False
+            assert s.ocr_language == "spa+eng"
+            assert s.ocr_timeout == 600
+            assert s.ocr_output_dir == "./ocr-output"
+
 
 class TestSettingsEnvVars:
     """Tests de lectura de variables de entorno."""
@@ -112,6 +120,21 @@ class TestSettingsEnvVars:
             s = Settings()
             assert s.llm_timeout == 600
 
+    def test_ocr_from_env(self):
+        with _clean_env(
+            {
+                "OCR_ENABLED": "true",
+                "OCR_LANGUAGE": "eng",
+                "OCR_TIMEOUT": "120",
+                "OCR_OUTPUT_DIR": "/tmp/ocr",
+            }
+        ):
+            s = Settings()
+            assert s.ocr_enabled is True
+            assert s.ocr_language == "eng"
+            assert s.ocr_timeout == 120
+            assert s.ocr_output_dir == "/tmp/ocr"
+
     def test_llm_backend_lm_studio(self):
         with _clean_env({"LLM_BACKEND": "lmstudio", "LM_STUDIO_MODEL": "modelo"}):
             s = Settings()
@@ -122,19 +145,19 @@ class TestLmStudioUrlNormalization:
     """Tests de normalización de LM Studio URL."""
 
     def test_adds_v1_suffix(self):
-        with _clean_env({"LM_STUDIO_BASE_URL": "http://localhost:41343"}):
+        with _clean_env({"LM_STUDIO_BASE_URL": "http://localhost:1234"}):
             s = Settings()
-            assert s.lm_studio_base_url == "http://localhost:41343/v1"
+            assert s.lm_studio_base_url == "http://localhost:1234/v1"
 
     def test_keeps_existing_v1(self):
-        with _clean_env({"LM_STUDIO_BASE_URL": "http://localhost:41343/v1"}):
+        with _clean_env({"LM_STUDIO_BASE_URL": "http://localhost:1234/v1"}):
             s = Settings()
-            assert s.lm_studio_base_url == "http://localhost:41343/v1"
+            assert s.lm_studio_base_url == "http://localhost:1234/v1"
 
     def test_removes_trailing_slash(self):
-        with _clean_env({"LM_STUDIO_BASE_URL": "http://localhost:41343/v1/"}):
+        with _clean_env({"LM_STUDIO_BASE_URL": "http://localhost:1234/v1/"}):
             s = Settings()
-            assert s.lm_studio_base_url == "http://localhost:41343/v1"
+            assert s.lm_studio_base_url == "http://localhost:1234/v1"
 
 
 class TestInvalidEnumValues:
@@ -167,6 +190,11 @@ class TestInvalidEnumValues:
 
     def test_llm_timeout_zero(self):
         with _clean_env({"LLM_TIMEOUT": "0"}):
+            with pytest.raises(ValidationError):
+                Settings()
+
+    def test_ocr_timeout_zero(self):
+        with _clean_env({"OCR_TIMEOUT": "0"}):
             with pytest.raises(ValidationError):
                 Settings()
 

@@ -7,6 +7,13 @@ RAG para documentos personales: **ingestión** → troceado → **embeddings** (
 - **Python 3.11+**
 - **Docker** (solo para levantar Qdrant; el resto puede ir en tu máquina)
 - Opcional: **Ollama** (u otro servidor compatible) si quieres respuestas generadas en local
+- Opcional para OCR: **OCRmyPDF**, **Tesseract**, idiomas de Tesseract, **Ghostscript** e **img2pdf** si quieres convertir imágenes sueltas a PDFs buscables
+
+En Ubuntu/Debian, las dependencias OCR locales se pueden instalar con:
+
+```bash
+sudo apt install ocrmypdf tesseract-ocr tesseract-ocr-spa tesseract-ocr-eng ghostscript img2pdf
+```
 
 ## Instalación
 
@@ -61,7 +68,7 @@ El archivo **`.env`** (junto al proyecto) controla Qdrant, embeddings, LLM y el 
 | `OPENROUTER_MODEL` | Identificador del modelo en OpenRouter (p. ej. `openai/gpt-4o-mini`, `anthropic/claude-3.5-sonnet`) |
 | `OPENROUTER_HTTP_REFERER` | Opcional; URL de referencia (OpenRouter lo recomienda en su documentación) |
 | `OPENROUTER_APP_TITLE` | Opcional; nombre de la app (`X-Title`) |
-| `LM_STUDIO_BASE_URL` | Host y puerto del servidor local; debe acabar en **`/v1`** (p. ej. `http://127.0.0.1:41343/v1`). Si omites `/v1`, privrag lo añade. La API es **POST** a `…/v1/chat/completions` (abrir la URL en el navegador muestra «Cannot GET», es normal) |
+| `LM_STUDIO_BASE_URL` | Host y puerto del servidor local; debe acabar en **`/v1`** (p. ej. `http://127.0.0.1:1234/v1`). Si omites `/v1`, privrag lo añade. La API es **POST** a `…/v1/chat/completions` (abrir la URL en el navegador muestra «Cannot GET», es normal) |
 | `LM_STUDIO_API_KEY` | Cabecera `Bearer` (LM Studio suele aceptar cualquier valor; por defecto `lm-studio`) |
 | `LM_STUDIO_MODEL` | Identificador del modelo cargado en LM Studio (vacío hasta que lo configures) |
 | `CHUNK_SIZE` | Tamaño aproximado del trozo en caracteres |
@@ -69,6 +76,10 @@ El archivo **`.env`** (junto al proyecto) controla Qdrant, embeddings, LLM y el 
 | `LLM_MAX_CONTEXT_CHARS` | Máximo de caracteres de contexto enviados al LLM (por defecto 24000; bajar si Ollama devuelve error por tamaño) |
 | `LLM_MAX_TOKENS` | Opcional; tope de tokens de **salida** del LLM. Si no se define, cada API/modelo usa su valor por defecto |
 | `LLM_CITATIONS` | `true` (defecto): el modelo recibe índices/rutas en el contexto y se le pide citar; `false`: contexto más compacto y respuesta sin citas (menos tokens) |
+| `OCR_ENABLED` | `false` por defecto. Si es `true`, la ingesta intenta generar PDFs buscables con OCR para PDFs/imágenes |
+| `OCR_LANGUAGE` | Idiomas Tesseract para OCR, por defecto `spa+eng` |
+| `OCR_TIMEOUT` | Timeout por documento OCR en segundos, por defecto `600` |
+| `OCR_OUTPUT_DIR` | Carpeta donde se guardan los PDFs buscables, por defecto `./ocr-output` |
 
 La lista completa y comentarios están en **`.env.example`**.
 
@@ -88,25 +99,32 @@ privrag query --help
 
 Indexa un **archivo** o todos los documentos admitidos bajo una **carpeta** (recursivo).
 
-**Formatos:** `.md`, `.markdown`, `.txt`, `.rst`, `.pdf`
+**Formatos:** `.md`, `.markdown`, `.txt`, `.rst`, `.pdf`. Con OCR activado también se admiten imágenes `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp` y `.webp`.
 
 ```bash
-privrag ingest RUTA [--collection NOMBRE] [--topic ETIQUETA]
+privrag ingest RUTA [--collection NOMBRE] [--topic ETIQUETA] [--ocr]
 ```
 
 | Opción | Corto | Descripción |
 |--------|-------|-------------|
 | `--collection` | `-c` | Nombre de la colección en Qdrant (por defecto `docs`) |
-| `--topic` | `-g` | Metadato opcional guardado en cada chunk (p. ej. `dnd5e`) |
+| `--topic` | `-t` | Metadato opcional guardado en cada chunk (p. ej. `dnd5e`) |
+| `--ocr` | — | Genera un PDF buscable con OCR antes de extraer texto e ingestar |
+| `--ocr-language` | — | Sobrescribe `OCR_LANGUAGE` para esta ingesta |
+| `--ocr-output-dir` | — | Sobrescribe `OCR_OUTPUT_DIR` para guardar PDFs buscables |
+| `--ocr-timeout` | — | Timeout OCR por documento en segundos |
 
 **Ejemplo:**
 
 ```bash
 privrag ingest ./examples --collection docs
 privrag ingest ./mis_reglas --collection dnd --topic dnd5e
+privrag ingest ./escaneados --collection docs --ocr --ocr-language spa+eng
 ```
 
 La primera vez descargará el modelo de embeddings local (Hugging Face) si usas `EMBEDDING_BACKEND=local`.
+
+Con `--ocr`, los PDFs escaneados se convierten primero en PDFs buscables en `OCR_OUTPUT_DIR` y la ingesta usa ese PDF con capa de texto. Para imágenes sueltas se usa `img2pdf` para generar un PDF temporal antes de aplicar OCR.
 
 ### `query`: preguntar
 
@@ -122,7 +140,7 @@ privrag query "TU PREGUNTA" [--collection NOMBRE] [--limit K] [--no-llm] [--no-c
 | `--limit` | `-k` | Número de fragmentos a recuperar (por defecto 5) |
 | `--no-llm` | — | Solo búsqueda vectorial: imprime puntuación, ruta y texto de cada hit (sin LLM) |
 | `--no-citations` | — | Respuesta del LLM sin pedir citas; contexto sin rutas (menos tokens); no imprime el bloque «Fuentes» al final |
-| `--topic` | `-g` | Solo chunks indexados con ese metadato (mismo valor que `ingest --topic`) |
+| `--topic` | `-t` | Solo chunks indexados con ese metadato (mismo valor que `ingest --topic`) |
 | `--source-prefix` | — | Solo fuentes cuya ruta absoluta empieza por la indicada (archivo o carpeta) |
 
 **Ejemplos:**
@@ -149,7 +167,7 @@ Tras instalar el paquete, puedes levantar una UI mínima en el navegador (ingest
 privrag-web
 ```
 
-Por defecto escucha en **http://127.0.0.1:8765**. Usa la misma configuración que la CLI (`.env`, Qdrant, embeddings y LLM). En la sección de consulta puedes elegir **proveedor** (Ollama, OpenAI, OpenRouter o **LM Studio**), **modelo**, **max_tokens** y si quieres **citas en la respuesta** por petición; si los dejas vacíos, se usan los valores del `.env`. La ingesta desde el navegador guarda los ficheros en un directorio temporal, los indexa y los borra; para carpetas grandes sigue siendo más práctico `privrag ingest` con una ruta en disco.
+Por defecto escucha en **http://127.0.0.1:8765**. Usa la misma configuración que la CLI (`.env`, Qdrant, embeddings y LLM). En la sección de consulta puedes elegir **proveedor** (Ollama, OpenAI, OpenRouter o **LM Studio**), **modelo**, **max_tokens** y si quieres **citas en la respuesta** por petición; si los dejas vacíos, se usan los valores del `.env`. La ingesta desde el navegador guarda los ficheros en un directorio temporal, los indexa y los borra; si activas OCR, los PDFs buscables generados se conservan en `OCR_OUTPUT_DIR`. Para carpetas grandes sigue siendo más práctico `privrag ingest` con una ruta en disco.
 
 **Seguridad:** está pensado para uso local; no expongas el puerto a redes que no controles sin autenticación y HTTPS.
 

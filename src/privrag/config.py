@@ -70,7 +70,7 @@ class Settings(BaseSettings):
     openrouter_app_title: str | None = Field(default=None, alias="OPENROUTER_APP_TITLE")
 
     # LM Studio: API compatible OpenAI (ruta /v1; el puerto lo muestra la app al iniciar el servidor)
-    lm_studio_base_url: str = Field(default="http://127.0.0.1:41343/v1", alias="LM_STUDIO_BASE_URL")
+    lm_studio_base_url: str = Field(default="http://127.0.0.1:1234/v1", alias="LM_STUDIO_BASE_URL")
     lm_studio_api_key: str = Field(default="lm-studio", alias="LM_STUDIO_API_KEY")
     lm_studio_model: str = Field(default="", alias="LM_STUDIO_MODEL")
 
@@ -87,6 +87,12 @@ class Settings(BaseSettings):
 
     chunk_size: int = Field(default=512, alias="CHUNK_SIZE")
     chunk_overlap: int = Field(default=64, alias="CHUNK_OVERLAP")
+
+    # OCR local para PDFs escaneados / imágenes. Requiere dependencias del sistema.
+    ocr_enabled: bool = Field(default=False, alias="OCR_ENABLED")
+    ocr_language: str = Field(default="spa+eng", alias="OCR_LANGUAGE")
+    ocr_timeout: int = Field(default=600, alias="OCR_TIMEOUT", ge=1)
+    ocr_output_dir: str = Field(default="./ocr-output", alias="OCR_OUTPUT_DIR")
 
     @field_validator("lm_studio_base_url", mode="after")
     @classmethod

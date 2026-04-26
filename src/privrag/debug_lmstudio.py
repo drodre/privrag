@@ -144,7 +144,7 @@ def format_probe_text(data: dict[str, Any]) -> str:
         lines.append("  Ese puerto casi seguro NO es el API de LM Studio (suele ser otro programa, p. ej. Express).")
         lines.append("  En LM Studio: pestaña «Developer» → inicia «Start Server» y copia la URL que indica (host + puerto).")
         lines.append("  Actualiza LM_STUDIO_BASE_URL con ese origen + «/v1» (p. ej. http://127.0.0.1:1234/v1 si ahí escucha).")
-        lines.append("  Comprueba con: ss -tlnp | grep -E '1234|41343'  (o el puerto que muestre LM Studio).")
+        lines.append("  Comprueba con: ss -tlnp | grep -E '1234|41343'  (o el puerto que muestre LM Studio; normalmente 1234).")
 
     lines.append("")
     lines.append("Interpretación rápida:")

@@ -243,9 +243,9 @@
       <form id="ingest-form">
         <div class="row">
           <div>
-            <label for="ingest-files">Archivos (.md, .txt, .pdf, .rst)</label>
+            <label for="ingest-files">Archivos (.md, .txt, .pdf, .rst, imágenes)</label>
             <input id="ingest-files" name="files" type="file" multiple required
-              accept=".md,.markdown,.txt,.pdf,.rst" />
+              accept=".md,.markdown,.txt,.pdf,.rst,.png,.jpg,.jpeg,.tif,.tiff,.bmp,.webp" />
           </div>
         </div>
         <div class="row cols-2">
@@ -255,7 +255,22 @@
           </div>
           <div>
             <label for="ingest-game">Juego (opcional)</label>
-            <input id="ingest-game" name="game" type="text" placeholder="ej. dnd5e" />
+            <input id="ingest-game" name="topic" type="text" placeholder="ej. dnd5e" />
+          </div>
+        </div>
+        <div class="row cols-2">
+          <div class="checks">
+            <label><input type="checkbox" id="ingest-ocr" name="ocr_pdf" /> Aplicar OCR y generar PDF buscable</label>
+          </div>
+          <div>
+            <label for="ingest-ocr-language">Idioma OCR</label>
+            <input id="ingest-ocr-language" name="ocr_language" type="text" placeholder="spa+eng" />
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <label for="ingest-ocr-timeout">Timeout OCR por documento (segundos)</label>
+            <input id="ingest-ocr-timeout" name="ocr_timeout" type="number" min="1" max="7200" />
           </div>
         </div>
         <button type="submit" id="ingest-btn">Indexar</button>
@@ -356,6 +371,9 @@
       const state = {
         "ingest-collection": document.getElementById("ingest-collection").value,
         "ingest-game": document.getElementById("ingest-game").value,
+        "ingest-ocr": document.getElementById("ingest-ocr").checked ? "1" : "",
+        "ingest-ocr-language": document.getElementById("ingest-ocr-language").value,
+        "ingest-ocr-timeout": document.getElementById("ingest-ocr-timeout").value,
         "q-collection": document.getElementById("q-collection").value,
         "q-limit": document.getElementById("q-limit").value,
         "q-game": document.getElementById("q-game").value,
@@ -375,11 +393,13 @@
         const raw = localStorage.getItem(STORAGE_KEY);
         if (!raw) return;
         const state = JSON.parse(raw);
-        const fields = ["ingest-collection", "ingest-game", "q-collection", "q-limit", "q-game", "q-prefix", "q-qdrant-timeout", "q-llm-timeout", "q-llm-backend"];
+        const fields = ["ingest-collection", "ingest-game", "ingest-ocr-language", "ingest-ocr-timeout", "q-collection", "q-limit", "q-game", "q-prefix", "q-qdrant-timeout", "q-llm-timeout", "q-llm-backend"];
         fields.forEach((id) => {
           const el = document.getElementById(id);
           if (el && state[id]) el.value = state[id];
         });
+        const ingestOcr = document.getElementById("ingest-ocr");
+        ingestOcr.checked = state["ingest-ocr"] === "1";
         const noLlm = document.getElementById("q-no-llm");
         noLlm.checked = state["q-no-llm"] === "1";
         // Disable LLM controls if no_llm is checked
@@ -457,6 +477,8 @@
           const mt = document.getElementById("q-max-tokens");
           const qt = document.getElementById("q-qdrant-timeout");
           const lt = document.getElementById("q-llm-timeout");
+          const il = document.getElementById("ingest-ocr-language");
+          const ito = document.getElementById("ingest-ocr-timeout");
           if (cfg.llm_max_tokens != null) {
             mt.placeholder = "Vacío = usar " + cfg.llm_max_tokens + " (.env)";
           } else {
@@ -471,6 +493,15 @@
             qt.placeholder = "Vacío = usar " + cfg.qdrant_timeout + " (.env)";
           } else {
             qt.placeholder = "Vacío = default de Qdrant";
+          }
+          if (cfg.ocr_language) {
+            il.placeholder = "Vacío = usar " + cfg.ocr_language + " (.env)";
+          }
+          if (cfg.ocr_timeout != null) {
+            ito.placeholder = "Vacío = usar " + cfg.ocr_timeout + " (.env)";
+          }
+          if (typeof cfg.ocr_enabled === "boolean") {
+            document.getElementById("ingest-ocr").checked = cfg.ocr_enabled;
           }
           updateLlmModelPlaceholder();
           if (typeof cfg.llm_citations === "boolean") {
@@ -515,6 +546,8 @@
       const btn = document.getElementById("ingest-btn");
       const msg = document.getElementById("ingest-msg");
       const fd = new FormData(e.target);
+      if (!String(fd.get("ocr_timeout") || "").trim()) fd.delete("ocr_timeout");
+      if (!String(fd.get("ocr_language") || "").trim()) fd.delete("ocr_language");
       btn.disabled = true;
       hide(msg);
       try {
@@ -524,10 +557,20 @@
           renderQueryError(data, res.statusText, answerEl, msg);
           return;
         }
-        const lines = data.files.map((f) => f.path + " → " + f.chunks + " chunks").join("\n");
+        const lines = data.files.map((f) => {
+          const ocr = f.ocr_output_path ? " (OCR: " + f.ocr_output_path + ")" : "";
+          return f.path + " → " + f.chunks + " chunks" + ocr;
+        }).join("\n");
+        const ocrLines = (data.ocr_outputs || []).map((o) => {
+          return "OCR generado: " + o.output_path;
+        }).join("\n");
         // Save collection/game for next time
         saveFormState();
-        show(msg, "Listo. Total chunks: " + data.total_chunks + "\n" + lines, "ok");
+        show(
+          msg,
+          "Listo. Total chunks: " + data.total_chunks + "\n" + lines + (ocrLines ? "\n" + ocrLines : ""),
+          "ok"
+        );
         loadQdrantStatus();
       } catch (err) {
         show(msg, String(err), "err");
@@ -569,7 +612,7 @@
         question,
         collection: document.getElementById("q-collection").value.trim() || "docs",
         limit: parseInt(document.getElementById("q-limit").value, 10) || 5,
-        game: document.getElementById("q-game").value.trim() || null,
+        topic: document.getElementById("q-game").value.trim() || null,
         source_prefix: document.getElementById("q-prefix").value.trim() || null,
         no_llm: noLlm,
       };

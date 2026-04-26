@@ -89,6 +89,21 @@ class TestIterDocuments:
         finally:
             shutil.rmtree(fixtures, ignore_errors=True)
 
+    def test_directory_includes_images_when_requested(self):
+        """Las imágenes solo se incluyen cuando OCR las necesita."""
+        fixtures = Path(tempfile.mkdtemp(prefix="privrag_test_"))
+        try:
+            (fixtures / "doc.md").write_text("# Doc")
+            (fixtures / "scan.png").write_text("fake")
+
+            without_images = iter_documents(fixtures)
+            with_images = iter_documents(fixtures, include_images=True)
+
+            assert "scan.png" not in {p.name for p in without_images}
+            assert "scan.png" in {p.name for p in with_images}
+        finally:
+            shutil.rmtree(fixtures, ignore_errors=True)
+
     def test_empty_directory(self):
         """Directorio vacío retorna lista vacía."""
         fixtures = Path(tempfile.mkdtemp(prefix="privrag_test_empty_"))

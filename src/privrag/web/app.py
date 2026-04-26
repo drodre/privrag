@@ -236,6 +236,9 @@ def api_config() -> JSONResponse:
             "lm_studio_model": s.lm_studio_model,
             "llm_max_tokens": s.llm_max_tokens,
             "llm_citations": s.llm_citations,
+            "ocr_enabled": s.ocr_enabled,
+            "ocr_language": s.ocr_language,
+            "ocr_timeout": s.ocr_timeout,
             # Modelos disponibles para la UI
             "available_ollama_models": parse_models(s.available_ollama_models),
             "available_openai_models": parse_models(s.available_openai_models),
@@ -265,6 +268,9 @@ async def api_ingest(
     files: list[UploadFile] = File(...),
     collection: str = Form("docs"),
     topic: str | None = Form(None),
+    ocr_pdf: bool | None = Form(None),
+    ocr_language: str | None = Form(None),
+    ocr_timeout: int | None = Form(None),
 ) -> JSONResponse:
     if not files:
         raise HTTPException(status_code=400, detail="Sube al menos un archivo.")
@@ -286,18 +292,44 @@ async def api_ingest(
             raise HTTPException(status_code=400, detail="No se pudo guardar ningún archivo válido.")
 
         try:
-            results = ingest_path(tmp, collection, topic)
-        except ValueError as e:
+            results = ingest_path(
+                tmp,
+                collection,
+                topic,
+                ocr_pdf=ocr_pdf,
+                ocr_language=ocr_language,
+                ocr_timeout=ocr_timeout,
+            )
+        except (RuntimeError, TimeoutError, ValueError) as e:
             raise HTTPException(status_code=400, detail=str(e)) from e
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 
-    total = sum(n for _, n in results)
+    total = sum(item.chunks for item in results)
+    ocr_outputs = [
+        {
+            "source_path": item.source_path,
+            "output_path": item.ocr_output_path,
+            "status": item.ocr_status,
+            "message": item.ocr_message,
+        }
+        for item in results
+        if item.ocr_output_path
+    ]
     return JSONResponse(
         {
             "ok": True,
             "collection": collection,
-            "files": [{"path": p, "chunks": n} for p, n in results],
+            "files": [
+                {
+                    "path": item.source_path,
+                    "indexed_path": item.indexed_path,
+                    "chunks": item.chunks,
+                    "ocr_output_path": item.ocr_output_path,
+                }
+                for item in results
+            ],
+            "ocr_outputs": ocr_outputs,
             "total_chunks": total,
         }
     )

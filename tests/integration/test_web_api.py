@@ -32,13 +32,16 @@ with (
     mock_s.ollama_model = "llama3.2"
     mock_s.openai_model = "gpt-4o-mini"
     mock_s.openrouter_model = "openai/gpt-4o-mini"
-    mock_s.lm_studio_base_url = "http://localhost:41343/v1"
+    mock_s.lm_studio_base_url = "http://localhost:1234/v1"
     mock_s.lm_studio_model = "modelo"
     mock_s.llm_max_tokens = None
     mock_s.llm_timeout = 300
     mock_s.llm_citations = True
     mock_s.llm_max_context_chars = 24000
     mock_s.qdrant_timeout = 30
+    mock_s.ocr_enabled = False
+    mock_s.ocr_language = "spa+eng"
+    mock_s.ocr_timeout = 600
     mock_settings.return_value = mock_s
 
     # Mock de embedder
@@ -93,6 +96,9 @@ class TestApiConfig:
             "llm_timeout",
             "llm_citations",
             "qdrant_timeout",
+            "ocr_enabled",
+            "ocr_language",
+            "ocr_timeout",
         ]
         for field in required:
             assert field in data, f"Missing field: {field}"

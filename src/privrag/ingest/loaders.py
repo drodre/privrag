@@ -2,6 +2,8 @@ from pathlib import Path
 
 from pypdf import PdfReader
 
+from privrag.ingest.ocr import IMAGE_SUFFIXES
+
 
 def read_file_text(path: Path) -> str:
     suf = path.suffix.lower()
@@ -17,11 +19,13 @@ def read_file_text(path: Path) -> str:
     raise ValueError(f"Formato no soportado: {path}")
 
 
-def iter_documents(root: Path) -> list[Path]:
+def iter_documents(root: Path, *, include_images: bool = False) -> list[Path]:
     root = root.resolve()
     if root.is_file():
         return [root]
     allowed = {".md", ".markdown", ".txt", ".rst", ".pdf"}
+    if include_images:
+        allowed = allowed | IMAGE_SUFFIXES
     out: list[Path] = []
     for p in sorted(root.rglob("*")):
         if p.is_file() and p.suffix.lower() in allowed:

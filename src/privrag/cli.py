@@ -11,23 +11,37 @@ app = typer.Typer(no_args_is_help=True, help="RAG para documentos de RPG (Qdrant
 
 @app.command()
 def ingest(
-    path: Path = typer.Argument(..., help="Archivo o carpeta con .md, .txt, .pdf"),
+    path: Path = typer.Argument(..., help="Archivo o carpeta con .md, .txt, .pdf o imágenes"),
     collection: str = typer.Option("docs", "--collection", "-c", help="Nombre de la colección Qdrant"),
     topic: str | None = typer.Option(None, "--topic", "-t", help="Metadato opcional (ej. dnd5e)"),
+    ocr: bool = typer.Option(False, "--ocr", help="Genera PDFs buscables con OCR antes de ingestar"),
+    ocr_language: str | None = typer.Option(None, "--ocr-language", help="Idiomas Tesseract, ej. spa+eng"),
+    ocr_output_dir: Path | None = typer.Option(None, "--ocr-output-dir", help="Directorio para PDFs OCR"),
+    ocr_timeout: int | None = typer.Option(None, "--ocr-timeout", help="Timeout OCR por documento"),
 ) -> None:
     """Indexa documentos en Qdrant (chunk → embed → upsert)."""
     try:
-        results = ingest_path(path, collection, topic)
-    except ValueError as e:
+        results = ingest_path(
+            path,
+            collection,
+            topic,
+            ocr_pdf=ocr,
+            ocr_language=ocr_language,
+            ocr_output_dir=ocr_output_dir,
+            ocr_timeout=ocr_timeout,
+        )
+    except (RuntimeError, TimeoutError, ValueError) as e:
         typer.echo(str(e), err=True)
         raise typer.Exit(code=1) from e
 
-    for fp, n in results:
-        typer.echo(f"Ingestando {fp} …")
-        if n == 0:
+    for item in results:
+        typer.echo(f"Ingestando {item.source_path} …")
+        if item.ocr_output_path:
+            typer.echo(f"  OCR → {item.ocr_output_path}")
+        if item.chunks == 0:
             typer.echo("  (vacío, omitido)")
         else:
-            typer.echo(f"  → {n} chunks")
+            typer.echo(f"  → {item.chunks} chunks")
     typer.echo("Listo.")
 
 
@@ -102,7 +116,7 @@ def lmstudio_probe(
     base_url: str | None = typer.Option(
         None,
         "--base-url",
-        help="Sobrescribe LM_STUDIO_BASE_URL (p. ej. http://127.0.0.1:41343/v1)",
+        help="Sobrescribe LM_STUDIO_BASE_URL (p. ej. http://127.0.0.1:1234/v1)",
     ),
 ) -> None:
     """Prueba rutas habituales contra LM Studio (GET /v1/models, POST chat, etc.)."""
